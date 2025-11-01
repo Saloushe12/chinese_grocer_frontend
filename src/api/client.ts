@@ -3,10 +3,11 @@ import type { AxiosInstance, AxiosResponse } from 'axios'
 import type {
   CreateStoreRequest,
   CreateStoreResponse,
-  GetStoreResponse,
   GetStoresByNameRequest,
   GetStoresByAddressRequest,
   StoreIdResponse,
+  StoreListResponse,
+  StoreDetailResponse,
   RegisterUserRequest,
   AuthenticateUserRequest,
   UserResponse,
@@ -17,12 +18,15 @@ import type {
   GetReviewsForStoreRequest,
   GetReviewsByUserRequest,
   ReviewsResponse,
+  ReviewListResponse,
   UpdateRatingRequest,
   GetRatingRequest,
   Rating,
   AddTagRequest,
   RemoveTagRequest,
-  GetStoresByTagRequest
+  GetStoresByTagRequest,
+  GetTagsForStoreRequest,
+  TagsForStoreResponse
 } from '@/types/api'
 
 class ApiClient {
@@ -63,7 +67,7 @@ class ApiClient {
           // Unauthorized - clear token and redirect to login
           localStorage.removeItem('authToken')
           localStorage.removeItem('userId')
-          window.location.href = '/login'
+          window.location.href = '/my-account'
         }
         return Promise.reject(error)
       }
@@ -80,8 +84,13 @@ class ApiClient {
     await this.client.post('/api/Store/deleteStore', { storeId })
   }
 
-  async getStore(storeId: string): Promise<GetStoreResponse[]> {
-    const response = await this.client.post('/api/Store/_getStore', { storeId })
+  async listStores(): Promise<StoreListResponse> {
+    const response = await this.client.post('/api/Store/listStores', {})
+    return response.data
+  }
+
+  async getStoreById(storeId: string): Promise<StoreDetailResponse> {
+    const response = await this.client.post('/api/Store/getStoreById', { storeId })
     return response.data
   }
 
@@ -134,8 +143,18 @@ class ApiClient {
     return response.data
   }
 
+  async listReviewsForStore(data: GetReviewsForStoreRequest): Promise<ReviewListResponse> {
+    const response = await this.client.post('/api/Review/listReviewsForStore', data)
+    return response.data
+  }
+
   async getReviewsByUser(data: GetReviewsByUserRequest): Promise<ReviewsResponse> {
     const response = await this.client.post('/api/Review/getReviewsByUser', data)
+    return response.data
+  }
+
+  async listReviewsByUser(data: GetReviewsByUserRequest): Promise<ReviewListResponse> {
+    const response = await this.client.post('/api/Review/listReviewsByUser', data)
     return response.data
   }
 
@@ -160,6 +179,11 @@ class ApiClient {
 
   async getStoresByTag(data: GetStoresByTagRequest): Promise<StoreIdResponse[]> {
     const response = await this.client.post('/api/Tagging/_getStoresByTag', data)
+    return response.data
+  }
+
+  async listTagsForStore(data: GetTagsForStoreRequest): Promise<TagsForStoreResponse> {
+    const response = await this.client.post('/api/Tagging/listTagsForStore', data)
     return response.data
   }
 }

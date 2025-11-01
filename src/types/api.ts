@@ -9,11 +9,23 @@ export interface Store {
   storeId: string
   name: string
   address: string
+  description?: string
+  tags?: string[]
+  phone?: string
+  hours?: string
+  rating?: number
+  reviewCount?: number
+  specialties?: string[]
+  image?: string
 }
 
 export interface CreateStoreRequest {
   name: string
   address: string
+  description?: string
+  tags?: string[]
+  phone?: string
+  hours?: string
 }
 
 export interface CreateStoreResponse {
@@ -32,6 +44,12 @@ export interface GetStoresByNameRequest {
 export interface GetStoresByAddressRequest {
   address: string
 }
+
+export interface StoreListResponse {
+  items: Store[]
+}
+
+export interface StoreDetailResponse extends Store {}
 
 export interface StoreIdResponse {
   storeId: string
@@ -72,6 +90,7 @@ export interface Review {
   storeId: string
   text: string
   rating: number
+  tags?: string[]
 }
 
 export interface CreateReviewRequest {
@@ -79,6 +98,7 @@ export interface CreateReviewRequest {
   storeId: string
   text: string
   rating: number
+  tags?: string[]
 }
 
 export interface CreateReviewResponse {
@@ -95,6 +115,14 @@ export interface GetReviewsByUserRequest {
 
 export interface ReviewsResponse {
   reviewIds: string[]
+}
+
+export interface ReviewListResponse {
+  items: Review[]
+}
+
+export interface ReviewWithTimestamp extends Review {
+  createdAt?: string
 }
 
 // Rating Types
@@ -128,4 +156,12 @@ export interface RemoveTagRequest {
 
 export interface GetStoresByTagRequest {
   tag: string
+}
+
+export interface GetTagsForStoreRequest {
+  storeId: string
+}
+
+export interface TagsForStoreResponse {
+  tags: string[]
 }

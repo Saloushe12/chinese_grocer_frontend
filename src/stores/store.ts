@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import apiClient from '@/api/client'
-import type { Store, CreateStoreRequest, GetStoreResponse } from '@/types/api'
+import type { Store, CreateStoreRequest, AddTagRequest } from '@/types/api'
 
 export const useStoreStore = defineStore('store', () => {
   // State
@@ -9,6 +9,41 @@ export const useStoreStore = defineStore('store', () => {
   const currentStore = ref<Store | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
+  
+  // Initialize from localStorage
+  const loadFromStorage = () => {
+    try {
+      const stored = localStorage.getItem('pinia_store_store')
+      if (stored) {
+        const data = JSON.parse(stored)
+        stores.value = data.stores || []
+        currentStore.value = data.currentStore || null
+      }
+    } catch (e) {
+      console.error('Failed to load store store from localStorage:', e)
+    }
+  }
+  
+  // Save to localStorage
+  const saveToStorage = () => {
+    try {
+      const data = {
+        stores: stores.value,
+        currentStore: currentStore.value
+      }
+      localStorage.setItem('pinia_store_store', JSON.stringify(data))
+    } catch (e) {
+      console.error('Failed to save store store to localStorage:', e)
+    }
+  }
+  
+  // Watch for changes and persist
+  watch([stores, currentStore], () => {
+    saveToStorage()
+  }, { deep: true })
+  
+  // Load on initialization
+  loadFromStorage()
 
   // Getters
   const storeCount = computed(() => stores.value.length)
@@ -80,37 +115,48 @@ export const useStoreStore = defineStore('store', () => {
     }
   }
 
-  const getStore = async (storeId: string): Promise<Store | null> => {
+  const getStoreById = async (storeId: string): Promise<Store | null> => {
     try {
       setLoading(true)
       clearError()
       
-      const response = await apiClient.getStore(storeId)
+      const store = await apiClient.getStoreById(storeId)
       
-      if (response && response.length > 0) {
-        const storeData = response[0]
-        const store: Store = {
-          storeId,
-          name: storeData.name,
-          address: storeData.address
-        }
-        
-        // Update local state
-        const existingIndex = stores.value.findIndex(s => s.storeId === storeId)
-        if (existingIndex > -1) {
-          stores.value[existingIndex] = store
-        } else {
-          stores.value.push(store)
-        }
-        
-        return store
+      // Update local state
+      const existingIndex = stores.value.findIndex(s => s.storeId === storeId)
+      if (existingIndex > -1) {
+        stores.value[existingIndex] = store
+      } else {
+        stores.value.push(store)
       }
       
-      return null
+      return store
     } catch (err: any) {
       const errorMessage = err.response?.data?.error || 'Failed to get store'
       setError(errorMessage)
       return null
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const listStores = async (): Promise<Store[]> => {
+    try {
+      setLoading(true)
+      clearError()
+      
+      const response = await apiClient.listStores()
+      
+      // Update local state with all stores
+      stores.value = response.items
+      
+      return response.items
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.error || 'Failed to list stores'
+      setError(errorMessage)
+      
+      // If API fails, return cached stores from localStorage if available
+      return stores.value
     } finally {
       setLoading(false)
     }
@@ -152,6 +198,22 @@ export const useStoreStore = defineStore('store', () => {
     currentStore.value = store
   }
 
+  const addTag = async (data: AddTagRequest): Promise<boolean> => {
+    try {
+      setLoading(true)
+      clearError()
+      
+      await apiClient.addTag(data)
+      return true
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.error || 'Failed to add tag'
+      setError(errorMessage)
+      return false
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const clearStores = () => {
     stores.value = []
     currentStore.value = null
@@ -172,9 +234,11 @@ export const useStoreStore = defineStore('store', () => {
     // Actions
     createStore,
     deleteStore,
-    getStore,
+    getStoreById,
+    listStores,
     getStoresByName,
     getStoresByAddress,
+    addTag,
     setCurrentStore,
     clearStores,
     setLoading,

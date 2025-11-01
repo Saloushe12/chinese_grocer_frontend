@@ -1,0 +1,246 @@
+warning: in the working copy of 'src/api-spec.md', CRLF will be replaced by LF the next time Git touches it
+[1mdiff --git a/src/api-spec.md b/src/api-spec.md[m
+[1mindex f3bde1f..ea6fc88 100644[m
+[1m--- a/src/api-spec.md[m
+[1m+++ b/src/api-spec.md[m
+[36m@@ -43,6 +43,192 @@[m
+ }[m
+ ```[m
+ [m
+[32m+[m[32m---[m
+[32m+[m
+[32m+[m[32m# API Specification: Minimal Additions for Frontend Integration[m
+[32m+[m
+[32m+[m[32mThe following endpoints augment the existing API so the current frontend can render real data without fabricating it. They do not replace existing endpoints; they are additive.[m
+[32m+[m
+[32m+[m[32m## Store Additions[m
+[32m+[m
+[32m+[m[32m### POST /api/Store/listStores[m
+[32m+[m
+[32m+[m[32mDescription: Returns a list of stores. This endpoint exposes only fields intrinsic to the Store concept (no ratings, review counts, or tags).[m
+[32m+[m
+[32m+[m[32mRequirements:[m
+[32m+[m[32m- (None explicitly stated)[m
+[32m+[m
+[32m+[m[32mEffects:[m
+[32m+[m[32m- Returns an array of full store summaries.[m
+[32m+[m
+[32m+[m[32mRequest Body:[m
+[32m+[m
+[32m+[m[32m```json[m
+[32m+[m[32m{}[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32mSuccess Response Body (Query):[m
+[32m+[m
+[32m+[m[32m```json[m
+[32m+[m[32m{[m
+[32m+[m[32m  "items": [[m
+[32m+[m[32m    {[m
+[32m+[m[32m      "storeId": "string",[m
+[32m+[m[32m      "name": "string",[m
+[32m+[m[32m      "address": "string",[m
+[32m+[m[32m      "description": "string",[m
+[32m+[m[32m      "phone": "string",[m
+[32m+[m[32m      "hours": "string",[m
+[32m+[m[32m      "specialties": ["string"],[m
+[32m+[m[32m      "image": "string"[m
+[32m+[m[32m    }[m
+[32m+[m[32m  ][m
+[32m+[m[32m}[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32mError Response Body:[m
+[32m+[m
+[32m+[m[32m```json[m
+[32m+[m[32m{[m
+[32m+[m[32m  "error": "string"[m
+[32m+[m[32m}[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m***[m
+[32m+[m
+[32m+[m[32m### POST /api/Store/getStoreById[m
+[32m+[m
+[32m+[m[32mDescription: Returns a single store. This endpoint exposes only fields intrinsic to the Store concept (no ratings, review counts, or tags).[m
+[32m+[m
+[32m+[m[32mRequirements:[m
+[32m+[m[32m- The `storeId` must exist.[m
+[32m+[m
+[32m+[m[32mEffects:[m
+[32m+[m[32m- Returns the full store object.[m
+[32m+[m
+[32m+[m[32mRequest Body:[m
+[32m+[m
+[32m+[m[32m```json[m
+[32m+[m[32m{[m
+[32m+[m[32m  "storeId": "string"[m
+[32m+[m[32m}[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32mSuccess Response Body (Query):[m
+[32m+[m
+[32m+[m[32m```json[m
+[32m+[m[32m{[m
+[32m+[m[32m  "storeId": "string",[m
+[32m+[m[32m  "name": "string",[m
+[32m+[m[32m  "address": "string",[m
+[32m+[m[32m  "description": "string",[m
+[32m+[m[32m  "phone": "string",[m
+[32m+[m[32m  "hours": "string",[m
+[32m+[m[32m  "specialties": ["string"],[m
+[32m+[m[32m  "image": "string"[m
+[32m+[m[32m}[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32mError Response Body:[m
+[32m+[m
+[32m+[m[32m```json[m
+[32m+[m[32m{[m
+[32m+[m[32m  "error": "string"[m
+[32m+[m[32m}[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m## Review Additions[m
+[32m+[m
+[32m+[m[32m### POST /api/Review/listReviewsForStore[m
+[32m+[m
+[32m+[m[32mDescription: Returns full review objects for a given `storeId`.[m
+[32m+[m
+[32m+[m[32mRequirements:[m
+[32m+[m[32m- (None explicitly stated)[m
+[32m+[m
+[32m+[m[32mEffects:[m
+[32m+[m[32m- Returns an array of review objects. This concept remains isolated from Store; it does not alter Store data.[m
+[32m+[m
+[32m+[m[32mRequest Body:[m
+[32m+[m
+[32m+[m[32m```json[m
+[32m+[m[32m{[m
+[32m+[m[32m  "storeId": "string"[m
+[32m+[m[32m}[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32mSuccess Response Body (Query):[m
+[32m+[m
+[32m+[m[32m```json[m
+[32m+[m[32m{[m
+[32m+[m[32m  "items": [[m
+[32m+[m[32m    {[m
+[32m+[m[32m      "reviewId": "string",[m
+[32m+[m[32m      "userId": "string",[m
+[32m+[m[32m      "storeId": "string",[m
+[32m+[m[32m      "text": "string",[m
+[32m+[m[32m      "rating": "number",[m
+[32m+[m[32m      "tags": ["string"],[m
+[32m+[m[32m      "createdAt": "string"[m
+[32m+[m[32m    }[m
+[32m+[m[32m  ][m
+[32m+[m[32m}[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32mError Response Body:[m
+[32m+[m
+[32m+[m[32m```json[m
+[32m+[m[32m{[m
+[32m+[m[32m  "error": "string"[m
+[32m+[m[32m}[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m***[m
+[32m+[m
+[32m+[m[32m### POST /api/Review/listReviewsByUser[m
+[32m+[m
+[32m+[m[32mDescription: Returns full review objects authored by a given `userId`.[m
+[32m+[m
+[32m+[m[32mRequirements:[m
+[32m+[m[32m- (None explicitly stated)[m
+[32m+[m
+[32m+[m[32mEffects:[m
+[32m+[m[32m- Returns an array of review objects authored by the user. This concept remains isolated from Store; it does not alter Store data.[m
+[32m+[m
+[32m+[m[32mRequest Body:[m
+[32m+[m
+[32m+[m[32m```json[m
+[32m+[m[32m{[m
+[32m+[m[32m  "userId": "string"[m
+[32m+[m[32m}[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32mSuccess Response Body (Query):[m
+[32m+[m
+[32m+[m[32m```json[m
+[32m+[m[32m{[m
+[32m+[m[32m  "items": [[m
+[32m+[m[32m    {[m
+[32m+[m[32m      "reviewId": "string",[m
+[32m+[m[32m      "userId": "string",[m
+[32m+[m[32m      "storeId": "string",[m
+[32m+[m[32m      "text": "string",[m
+[32m+[m[32m      "rating": "number",[m
+[32m+[m[32m      "tags": ["string"],[m
+[32m+[m[32m      "createdAt": "string"[m
+[32m+[m[32m    }[m
+[32m+[m[32m  ][m
+[32m+[m[32m}[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32mError Response Body:[m
+[32m+[m
+[32m+[m[32m```json[m
+[32m+[m[32m{[m
+[32m+[m[32m  "error": "string"[m
+[32m+[m[32m}[m
+[32m+[m[32m```[m
+[32m+[m
+ ***[m
+ [m
+ ### POST /api/Store/deleteStore[m
+[36m@@ -490,6 +676,47 @@[m
+ {[m
+   "error": "string"[m
+ }[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m***[m
+[32m+[m
+[32m+[m[32m### POST /api/Tagging/listTagsForStore[m
+[32m+[m
+[32m+[m[32m**Description:** Returns the set of tags currently associated with the specified `storeId`.[m
+[32m+[m
+[32m+[m[32m**Requirements:**[m
+[32m+[m
+[32m+[m[32m* (None explicitly stated)[m
+[32m+[m
+[32m+[m[32m**Effects:**[m
+[32m+[m
+[32m+[m[32m* Returns the set of tags for the store. Tagging remains isolated from Store; this does not modify Store data.[m
+[32m+[m
+[32m+[m[32m**Request Body:**[m
+[32m+[m
+[32m+[m[32m```json[m
+[32m+[m[32m{[m
+[32m+[m[32m  "storeId": "string"[m
+[32m+[m[32m}[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m**Success Response Body (Query):**[m
+[32m+[m
+[32m+[m[32m```json[m
+[32m+[m[32m{[m
+[32m+[m[32m  "tags": [[m
+[32m+[m[32m    "string"[m
+[32m+[m[32m  ][m
+[32m+[m[32m}[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m**Error Response Body:**[m
+[32m+[m
+[32m+[m[32m```json[m
+[32m+[m[32m{[m
+[32m+[m[32m  "error": "string"[m
+[32m+[m[32m}[m
+[32m+[m[32m```[m
+ [m
+ # API Specification: Review Concept[m
+ [m

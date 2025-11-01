@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import apiClient from '@/api/client'
-import type { AddTagRequest, RemoveTagRequest, GetStoresByTagRequest } from '@/types/api'
+import type { AddTagRequest, RemoveTagRequest, GetStoresByTagRequest, GetTagsForStoreRequest } from '@/types/api'
 
 export const useTaggingStore = defineStore('tagging', () => {
   // State
@@ -9,6 +9,41 @@ export const useTaggingStore = defineStore('tagging', () => {
   const tagStores = ref<{ [tag: string]: string[] }>({})
   const loading = ref(false)
   const error = ref<string | null>(null)
+  
+  // Initialize from localStorage
+  const loadFromStorage = () => {
+    try {
+      const stored = localStorage.getItem('pinia_tagging_store')
+      if (stored) {
+        const data = JSON.parse(stored)
+        storeTags.value = data.storeTags || {}
+        tagStores.value = data.tagStores || {}
+      }
+    } catch (e) {
+      console.error('Failed to load tagging store from localStorage:', e)
+    }
+  }
+  
+  // Save to localStorage
+  const saveToStorage = () => {
+    try {
+      const data = {
+        storeTags: storeTags.value,
+        tagStores: tagStores.value
+      }
+      localStorage.setItem('pinia_tagging_store', JSON.stringify(data))
+    } catch (e) {
+      console.error('Failed to save tagging store to localStorage:', e)
+    }
+  }
+  
+  // Watch for changes and persist
+  watch([storeTags, tagStores], () => {
+    saveToStorage()
+  }, { deep: true })
+  
+  // Load on initialization
+  loadFromStorage()
 
   // Getters
   const tagCount = computed(() => Object.keys(tagStores.value).length)
@@ -124,6 +159,28 @@ export const useTaggingStore = defineStore('tagging', () => {
     }
   }
 
+  const listTagsForStore = async (storeId: string): Promise<string[]> => {
+    try {
+      setLoading(true)
+      clearError()
+      
+      const response = await apiClient.listTagsForStore({ storeId })
+      
+      // Update local state
+      storeTags.value[storeId] = response.tags
+      
+      return response.tags
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.error || 'Failed to get tags for store'
+      setError(errorMessage)
+      
+      // If API fails, return cached tags from localStorage if available
+      return storeTags.value[storeId] || []
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const setTagsForStore = (storeId: string, tags: string[]) => {
     storeTags.value[storeId] = [...tags]
   }
@@ -156,6 +213,7 @@ export const useTaggingStore = defineStore('tagging', () => {
     addTag,
     removeTag,
     getStoresByTag,
+    listTagsForStore,
     setTagsForStore,
     setStoresForTag,
     clearTags,

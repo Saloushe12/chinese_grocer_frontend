@@ -61,7 +61,7 @@ const loginUser = async () => {
     if (success) {
       alert('Login successful! Redirecting to your dashboard...')
       loginData.value = { usernameOrEmail: '', password: '' }
-      router.push('/dashboard')
+      router.push('/my-account')
     }
   }
 }
@@ -115,7 +115,7 @@ onMounted(async () => {
       <h3>Store Management</h3>
       <p class="success-message">✅ You are now logged in! Store management features are available in your dashboard.</p>
       <div class="dashboard-redirect">
-        <button class="btn-primary" @click="$router.push('/dashboard')">Go to Dashboard</button>
+        <button class="btn-primary" @click="$router.push('/my-account')">Go to My Account</button>
       </div>
     </div>
 
@@ -176,6 +176,8 @@ onMounted(async () => {
   border-radius: 12px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
   width: 100%;
+  position: relative;
+  z-index: 2;
 }
 
 .form-group h4 {
@@ -193,6 +195,9 @@ onMounted(async () => {
   border-radius: 8px;
   font-size: 1rem;
   transition: border-color 0.3s ease;
+  position: relative;
+  z-index: 2;
+  background: white;
 }
 
 .form-group input:focus {

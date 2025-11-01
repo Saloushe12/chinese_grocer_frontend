@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import apiClient from '@/api/client'
 import type { Review, CreateReviewRequest, ReviewsResponse } from '@/types/api'
 
@@ -10,6 +10,43 @@ export const useReviewStore = defineStore('review', () => {
   const userReviews = ref<{ [userId: string]: Review[] }>({})
   const loading = ref(false)
   const error = ref<string | null>(null)
+  
+  // Initialize from localStorage
+  const loadFromStorage = () => {
+    try {
+      const stored = localStorage.getItem('pinia_review_store')
+      if (stored) {
+        const data = JSON.parse(stored)
+        reviews.value = data.reviews || []
+        storeReviews.value = data.storeReviews || {}
+        userReviews.value = data.userReviews || {}
+      }
+    } catch (e) {
+      console.error('Failed to load review store from localStorage:', e)
+    }
+  }
+  
+  // Save to localStorage
+  const saveToStorage = () => {
+    try {
+      const data = {
+        reviews: reviews.value,
+        storeReviews: storeReviews.value,
+        userReviews: userReviews.value
+      }
+      localStorage.setItem('pinia_review_store', JSON.stringify(data))
+    } catch (e) {
+      console.error('Failed to save review store to localStorage:', e)
+    }
+  }
+  
+  // Watch for changes and persist
+  watch([reviews, storeReviews, userReviews], () => {
+    saveToStorage()
+  }, { deep: true })
+  
+  // Load on initialization
+  loadFromStorage()
 
   // Getters
   const reviewCount = computed(() => reviews.value.length)
@@ -59,7 +96,8 @@ export const useReviewStore = defineStore('review', () => {
         userId: reviewData.userId,
         storeId: reviewData.storeId,
         text: reviewData.text,
-        rating: reviewData.rating
+        rating: reviewData.rating,
+        tags: reviewData.tags
       }
       
       // Add to local state
@@ -143,6 +181,58 @@ export const useReviewStore = defineStore('review', () => {
     }
   }
 
+  const listReviewsForStore = async (storeId: string): Promise<Review[]> => {
+    try {
+      setLoading(true)
+      clearError()
+      
+      const response = await apiClient.listReviewsForStore({ storeId })
+      
+      // Update local state
+      response.items.forEach(review => {
+        // Add to store-specific reviews
+        if (!storeReviews.value[storeId]) {
+          storeReviews.value[storeId] = []
+        }
+        const existingIndex = storeReviews.value[storeId].findIndex(r => r.reviewId === review.reviewId)
+        if (existingIndex > -1) {
+          storeReviews.value[storeId][existingIndex] = review
+        } else {
+          storeReviews.value[storeId].push(review)
+        }
+        
+        // Add to user-specific reviews
+        if (!userReviews.value[review.userId]) {
+          userReviews.value[review.userId] = []
+        }
+        const userIndex = userReviews.value[review.userId].findIndex(r => r.reviewId === review.reviewId)
+        if (userIndex > -1) {
+          userReviews.value[review.userId][userIndex] = review
+        } else {
+          userReviews.value[review.userId].push(review)
+        }
+        
+        // Add to global reviews
+        const globalIndex = reviews.value.findIndex(r => r.reviewId === review.reviewId)
+        if (globalIndex > -1) {
+          reviews.value[globalIndex] = review
+        } else {
+          reviews.value.push(review)
+        }
+      })
+      
+      return response.items
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.error || 'Failed to list reviews for store'
+      setError(errorMessage)
+      
+      // If API fails, return cached reviews from localStorage if available
+      return storeReviews.value[storeId] || []
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const fetchReviewsByUser = async (userId: string): Promise<string[]> => {
     try {
       setLoading(true)
@@ -154,6 +244,58 @@ export const useReviewStore = defineStore('review', () => {
       const errorMessage = err.response?.data?.error || 'Failed to get reviews by user'
       setError(errorMessage)
       return []
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const listReviewsByUser = async (userId: string): Promise<Review[]> => {
+    try {
+      setLoading(true)
+      clearError()
+      
+      const response = await apiClient.listReviewsByUser({ userId })
+      
+      // Update local state
+      response.items.forEach(review => {
+        // Add to user-specific reviews
+        if (!userReviews.value[userId]) {
+          userReviews.value[userId] = []
+        }
+        const existingIndex = userReviews.value[userId].findIndex(r => r.reviewId === review.reviewId)
+        if (existingIndex > -1) {
+          userReviews.value[userId][existingIndex] = review
+        } else {
+          userReviews.value[userId].push(review)
+        }
+        
+        // Add to store-specific reviews
+        if (!storeReviews.value[review.storeId]) {
+          storeReviews.value[review.storeId] = []
+        }
+        const storeIndex = storeReviews.value[review.storeId].findIndex(r => r.reviewId === review.reviewId)
+        if (storeIndex > -1) {
+          storeReviews.value[review.storeId][storeIndex] = review
+        } else {
+          storeReviews.value[review.storeId].push(review)
+        }
+        
+        // Add to global reviews
+        const globalIndex = reviews.value.findIndex(r => r.reviewId === review.reviewId)
+        if (globalIndex > -1) {
+          reviews.value[globalIndex] = review
+        } else {
+          reviews.value.push(review)
+        }
+      })
+      
+      return response.items
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.error || 'Failed to list reviews by user'
+      setError(errorMessage)
+      
+      // If API fails, return cached reviews from localStorage if available
+      return userReviews.value[userId] || []
     } finally {
       setLoading(false)
     }
@@ -199,7 +341,9 @@ export const useReviewStore = defineStore('review', () => {
     createReview,
     deleteReview,
     fetchReviewsForStore,
+    listReviewsForStore,
     fetchReviewsByUser,
+    listReviewsByUser,
     addReviewToStore,
     addReviewToUser,
     clearReviews,

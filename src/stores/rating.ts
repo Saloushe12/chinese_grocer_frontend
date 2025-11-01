@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import apiClient from '@/api/client'
 import type { Rating, UpdateRatingRequest, GetRatingRequest } from '@/types/api'
 
@@ -8,6 +8,37 @@ export const useRatingStore = defineStore('rating', () => {
   const ratings = ref<{ [storeId: string]: Rating }>({})
   const loading = ref(false)
   const error = ref<string | null>(null)
+  
+  // Initialize from localStorage
+  const loadFromStorage = () => {
+    try {
+      const stored = localStorage.getItem('pinia_rating_store')
+      if (stored) {
+        const data = JSON.parse(stored)
+        ratings.value = data.ratings || {}
+      }
+    } catch (e) {
+      console.error('Failed to load rating store from localStorage:', e)
+    }
+  }
+  
+  // Save to localStorage
+  const saveToStorage = () => {
+    try {
+      const data = { ratings: ratings.value }
+      localStorage.setItem('pinia_rating_store', JSON.stringify(data))
+    } catch (e) {
+      console.error('Failed to save rating store to localStorage:', e)
+    }
+  }
+  
+  // Watch for changes and persist
+  watch([ratings], () => {
+    saveToStorage()
+  }, { deep: true })
+  
+  // Load on initialization
+  loadFromStorage()
 
   // Getters
   const ratingCount = computed(() => Object.keys(ratings.value).length)
@@ -89,7 +120,9 @@ export const useRatingStore = defineStore('rating', () => {
     } catch (err: any) {
       const errorMessage = err.response?.data?.error || 'Failed to get rating'
       setError(errorMessage)
-      return null
+      
+      // If API fails, return cached rating from localStorage if available
+      return ratings.value[storeId] || null
     } finally {
       setLoading(false)
     }

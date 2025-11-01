@@ -64,7 +64,7 @@ const response = await apiClient.createStore({
 })
 
 // Get store details
-const storeData = await apiClient.getStore(response.storeId)
+const storeData = await apiClient.getStoreById(response.storeId)
 ```
 
 ### 3. Testing API Connection
@@ -84,7 +84,7 @@ await ApiTester.testAllEndpoints()
 ### Store Management
 - `createStore(data)` - Create a new store
 - `deleteStore(storeId)` - Delete a store
-- `getStore(storeId)` - Get store details
+- `getStoreById(storeId)` - Get full store details
 - `getStoresByName(name)` - Find stores by name
 - `getStoresByAddress(address)` - Find stores by address
 
@@ -157,7 +157,7 @@ console.log(storeStore.hasStores)   // boolean
 
 // Actions
 await storeStore.createStore(data)
-await storeStore.getStore(id)
+await storeStore.getStoreById(id)
 ```
 
 ## Backend Server

@@ -80,7 +80,7 @@ const featuredStores = ref([
             </p>
             <div class="hero-buttons">
               <button class="btn-primary" @click="$router.push('/products')">Browse Stores</button>
-              <button class="btn-secondary" @click="$router.push('/login')">Login / Register</button>
+              <button class="btn-secondary" @click="$router.push('/my-account')">My Account</button>
             </div>
           </div>
           <div class="hero-image">
@@ -114,7 +114,7 @@ const featuredStores = ref([
               </span>
             </div>
             <p class="store-description">{{ store.description }}</p>
-            <button class="view-store-btn">View Store Details</button>
+            <button class="view-store-btn" @click="$router.push(`/store/${store.id}`)">View Store Details</button>
           </div>
         </div>
       </div>

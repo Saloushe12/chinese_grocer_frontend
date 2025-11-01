@@ -1,21 +1,38 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useReviewStore } from '@/stores/review'
 import { useStoreStore } from '@/stores/store'
 import type { Review, CreateReviewRequest } from '@/types/api'
+
+// Router
+const router = useRouter()
 
 // Store instances
 const userStore = useUserStore()
 const reviewStore = useReviewStore()
 const storeStore = useStoreStore()
 
-// State
+// Authentication state
+const showLoginForm = ref(false)
+const showRegisterForm = ref(false)
+
+// Registration form data
+const newUser = ref({
+  username: '',
+  email: '',
+  password: ''
+})
+
+// Login form data
+const loginData = ref({
+  usernameOrEmail: '',
+  password: ''
+})
+
+// User dashboard state
 const userReviews = ref<Review[]>([])
-const showCreateReviewForm = ref(false)
-const selectedStoreId = ref('')
-const newReviewText = ref('')
-const newReviewRating = ref(5)
 const loading = ref(false)
 const error = ref<string | null>(null)
 
@@ -23,43 +40,66 @@ const error = ref<string | null>(null)
 const showCreateStoreForm = ref(false)
 const newStore = ref({
   name: '',
-  address: ''
+  address: '',
+  description: '',
+  tags: [] as string[],
+  phone: '',
+  hours: ''
 })
+
+// Tag input state
+const newTag = ref('')
 
 // User's created stores
 const userStores = ref<any[]>([])
 const loadingStores = ref(false)
-
-// Autocomplete for store selection
-const storeSearchQuery = ref('')
-const showStoreSuggestions = ref(false)
-const filteredStores = ref<any[]>([])
-const allStores = ref<any[]>([])
-
-// Form data for creating a new review
-const createReviewForm = ref<CreateReviewRequest>({
-  userId: '',
-  storeId: '',
-  text: '',
-  rating: 5
-})
 
 // Computed properties
 const isLoggedIn = computed(() => userStore.isAuthenticated)
 const currentUserId = computed(() => userStore.userId)
 const currentUsername = computed(() => userStore.username)
 
-// Sample stores for the dropdown (in a real app, this would come from the store store)
-const availableStores = ref([
-  { storeId: '1', name: 'Kam Man Food', address: '219 Quincy Ave, Quincy, MA 02169' },
-  { storeId: '2', name: 'Super 88 Market', address: '1095 Commonwealth Ave, Boston, MA 02215' },
-  { storeId: '3', name: 'C-Mart', address: '692 Washington St, Boston, MA 02111' },
-  { storeId: '4', name: 'Great Wall Supermarket', address: '1 Brighton Ave, Allston, MA 02134' },
-  { storeId: '5', name: 'H-Mart', address: '581 Massachusetts Ave, Cambridge, MA 02139' },
-  { storeId: '6', name: 'Ranch 99', address: '99 Middlesex Turnpike, Burlington, MA 01803' }
-])
 
-// Methods
+// Authentication methods
+const registerUser = async () => {
+  if (newUser.value.username && newUser.value.email && newUser.value.password) {
+    const success = await userStore.register(
+      newUser.value.username,
+      newUser.value.email,
+      newUser.value.password
+    )
+    if (success) {
+      alert('User registered and logged in successfully!')
+      newUser.value = { username: '', email: '', password: '' }
+      showRegisterForm.value = false
+      await loadUserData()
+    }
+  }
+}
+
+const loginUser = async () => {
+  if (loginData.value.usernameOrEmail && loginData.value.password) {
+    const success = await userStore.login(
+      loginData.value.usernameOrEmail,
+      loginData.value.password
+    )
+    if (success) {
+      alert('Login successful!')
+      loginData.value = { usernameOrEmail: '', password: '' }
+      showLoginForm.value = false
+      await loadUserData()
+    }
+  }
+}
+
+const logout = () => {
+  userStore.logout()
+  alert('Logged out successfully!')
+  userReviews.value = []
+  userStores.value = []
+}
+
+// User dashboard methods
 const loadUserReviews = async () => {
   if (!currentUserId.value) return
   
@@ -71,55 +111,12 @@ const loadUserReviews = async () => {
     userReviews.value = await reviewStore.listReviewsByUser(currentUserId.value)
   } catch (err: any) {
     error.value = err.message || 'Failed to load reviews'
-    // Set empty array as fallback
     userReviews.value = []
   } finally {
     loading.value = false
   }
 }
 
-const createReview = async () => {
-  if (!currentUserId.value || !selectedStoreId.value || !newReviewText.value.trim()) {
-    error.value = 'Please select a store and fill in all required fields'
-    return
-  }
-  
-  try {
-    loading.value = true
-    error.value = null
-    
-    const reviewData: CreateReviewRequest = {
-      userId: currentUserId.value,
-      storeId: selectedStoreId.value,
-      text: newReviewText.value.trim(),
-      rating: newReviewRating.value
-    }
-    
-    const reviewId = await reviewStore.createReview(reviewData)
-    
-    if (reviewId) {
-      // Add to local reviews list
-      const newReview: Review = {
-        reviewId,
-        userId: currentUserId.value,
-        storeId: selectedStoreId.value,
-        text: newReviewText.value.trim(),
-        rating: newReviewRating.value
-      }
-      userReviews.value.unshift(newReview)
-      
-      // Reset form
-      selectedStoreId.value = ''
-      newReviewText.value = ''
-      newReviewRating.value = 5
-      showCreateReviewForm.value = false
-    }
-  } catch (err: any) {
-    error.value = err.message || 'Failed to create review'
-  } finally {
-    loading.value = false
-  }
-}
 
 const deleteReview = async (reviewId: string) => {
   if (!confirm('Are you sure you want to delete this review?')) return
@@ -131,7 +128,6 @@ const deleteReview = async (reviewId: string) => {
     const success = await reviewStore.deleteReview(reviewId)
     
     if (success) {
-      // Remove from local reviews list
       const index = userReviews.value.findIndex(review => review.reviewId === reviewId)
       if (index > -1) {
         userReviews.value.splice(index, 1)
@@ -142,24 +138,6 @@ const deleteReview = async (reviewId: string) => {
   } finally {
     loading.value = false
   }
-}
-
-const getStoreName = (storeId: string) => {
-  const store = availableStores.value.find(s => s.storeId === storeId)
-  return store ? store.name : 'Unknown Store'
-}
-
-const getStoreAddress = (storeId: string) => {
-  const store = availableStores.value.find(s => s.storeId === storeId)
-  return store ? store.address : 'Unknown Address'
-}
-
-const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  })
 }
 
 const createStore = async () => {
@@ -175,10 +153,23 @@ const createStore = async () => {
     const storeId = await storeStore.createStore(newStore.value)
     
     if (storeId) {
+      // Add tags if any
+      if (newStore.value.tags.length > 0) {
+        for (const tag of newStore.value.tags) {
+          await storeStore.addTag({ storeId, tag })
+        }
+      }
+      
       alert(`Store created successfully! ID: ${storeId}`)
-      newStore.value = { name: '', address: '' }
+      newStore.value = { 
+        name: '', 
+        address: '', 
+        description: '', 
+        tags: [], 
+        phone: '', 
+        hours: '' 
+      }
       showCreateStoreForm.value = false
-      // Reload user stores after creating a new one
       await loadUserStores()
     }
   } catch (err: any) {
@@ -188,200 +179,205 @@ const createStore = async () => {
   }
 }
 
+const addTag = () => {
+  if (newTag.value.trim() && !newStore.value.tags.includes(newTag.value.trim())) {
+    newStore.value.tags.push(newTag.value.trim())
+    newTag.value = ''
+  }
+}
+
+const removeTag = (tagToRemove: string) => {
+  newStore.value.tags = newStore.value.tags.filter(tag => tag !== tagToRemove)
+}
+
 const loadUserStores = async () => {
   if (!currentUserId.value) return
   
   try {
     loadingStores.value = true
-    // For now, we'll use the existing stores from the store store
-    // In a real implementation, you'd have an API endpoint to get stores by user
     userStores.value = storeStore.stores || []
-  } catch (err: any) {
+  } catch (err) {
     console.error('Failed to load user stores:', err)
   } finally {
     loadingStores.value = false
   }
 }
 
-const loadAllStores = async () => {
-  try {
-    // Load all available stores for autocomplete
-    // This would typically come from an API endpoint
-    allStores.value = [
-      { storeId: '1', name: 'Kam Man Food', address: '219 Quincy Ave, Quincy, MA 02169' },
-      { storeId: '2', name: 'Super 88 Market', address: '1095 Commonwealth Ave, Boston, MA 02215' },
-      { storeId: '3', name: 'C-Mart', address: '692 Washington St, Boston, MA 02111' },
-      { storeId: '4', name: 'Great Wall Supermarket', address: '1 Brighton Ave, Allston, MA 02134' },
-      { storeId: '5', name: 'H-Mart', address: '581 Massachusetts Ave, Cambridge, MA 02139' },
-      { storeId: '6', name: 'Ranch 99', address: '99 Middlesex Turnpike, Burlington, MA 01803' }
-    ]
-  } catch (err: any) {
-    console.error('Failed to load stores:', err)
-  }
+
+const getStoreName = (storeId: string) => {
+  const store = storeStore.stores.find(s => s.storeId === storeId)
+  return store?.name || `Store ID: ${storeId}`
 }
 
-const searchStores = (query: string) => {
-  if (!query.trim()) {
-    filteredStores.value = []
-    showStoreSuggestions.value = false
-    return
-  }
-  
-  const searchTerm = query.toLowerCase()
-  filteredStores.value = allStores.value.filter(store => 
-    store.name.toLowerCase().includes(searchTerm) ||
-    store.address.toLowerCase().includes(searchTerm)
-  )
-  showStoreSuggestions.value = filteredStores.value.length > 0
+const getStoreAddress = (storeId: string) => {
+  const store = storeStore.stores.find(s => s.storeId === storeId)
+  return store?.address || 'View store details on the Stores page'
 }
 
-const selectStore = (store: any) => {
-  selectedStoreId.value = store.storeId
-  storeSearchQuery.value = store.name
-  showStoreSuggestions.value = false
+const goToStore = (storeId: string) => {
+  router.push(`/store/${storeId}`)
 }
 
-const clearStoreSelection = () => {
-  selectedStoreId.value = ''
-  storeSearchQuery.value = ''
-  showStoreSuggestions.value = false
-}
-
-// Lifecycle
-onMounted(async () => {
-  await loadAllStores() // Load all stores for autocomplete
+const loadUserData = async () => {
   if (isLoggedIn.value) {
     await loadUserReviews()
     await loadUserStores()
   }
+}
+
+// Watch for review store changes to keep reviews in sync
+watch(() => reviewStore.userReviews, (newUserReviews) => {
+  if (currentUserId.value && newUserReviews[currentUserId.value]) {
+    const reviews = newUserReviews[currentUserId.value]
+    if (reviews && Array.isArray(reviews)) {
+      userReviews.value = reviews
+    }
+  }
+}, { deep: true })
+
+// Lifecycle
+onMounted(async () => {
+  await userStore.checkAuthStatus()
+  
+  // Load persisted reviews first (from localStorage)
+  if (currentUserId.value && reviewStore.userReviews[currentUserId.value]) {
+    const persistedReviews = reviewStore.userReviews[currentUserId.value]
+    if (persistedReviews && Array.isArray(persistedReviews)) {
+      userReviews.value = persistedReviews
+    }
+  }
+  
+  await loadUserData()
 })
 </script>
 
 <template>
-  <div class="user-dashboard page-container">
-    <section class="dashboard-hero">
-      <h1>My Reviews</h1>
-      <p class="subtitle">Manage your reviews for Chinese grocery stores</p>
+  <div class="my-account page-container">
+    <section class="account-hero">
+      <h1>My Account</h1>
+      <p class="subtitle">Manage your account, reviews, and store listings</p>
     </section>
 
-    <section class="dashboard-content">
-      <!-- Authentication Check -->
-      <div v-if="!isLoggedIn" class="auth-required">
-        <div class="auth-message">
-          <h2>Please Log In</h2>
-          <p>You need to be logged in to view and manage your reviews.</p>
-          <button class="btn-primary" @click="$router.push('/manage')">Go to Login</button>
-        </div>
-      </div>
-
-      <!-- User Dashboard Content -->
-      <div v-else class="dashboard-main">
-        <!-- User Info -->
-        <div class="user-info">
-          <h2>Welcome, {{ currentUsername }}!</h2>
-          <p>You have {{ userReviews.length }} review{{ userReviews.length !== 1 ? 's' : '' }}</p>
-        </div>
-
-        <!-- Create Review Section -->
-        <div class="create-review-section">
-          <div class="section-header">
-            <h3>Write a New Review</h3>
+    <section class="account-content">
+      <!-- Not Logged In State -->
+      <div v-if="!isLoggedIn" class="auth-section">
+        <div class="auth-container">
+          <h2>Welcome to Chinese Grocery Finder</h2>
+          <p>Sign in to your account or create a new one to manage your reviews and store listings.</p>
+          
+          <div class="auth-options">
+            <button 
+              class="btn-primary" 
+              @click="showLoginForm = !showLoginForm"
+            >
+              {{ showLoginForm ? 'Cancel Login' : 'Sign In' }}
+            </button>
             <button 
               class="btn-secondary" 
-              @click="showCreateReviewForm = !showCreateReviewForm"
+              @click="showRegisterForm = !showRegisterForm"
             >
-              {{ showCreateReviewForm ? 'Cancel' : 'Write Review' }}
+              {{ showRegisterForm ? 'Cancel Registration' : 'Create Account' }}
             </button>
           </div>
 
-          <!-- Create Review Form -->
-          <div v-if="showCreateReviewForm" class="create-review-form">
+          <!-- Login Form -->
+          <div v-if="showLoginForm" class="auth-form">
+            <h3>Sign In</h3>
             <div class="form-group">
-              <label for="store-search">Search Store:</label>
-              <div class="autocomplete-container">
-                <input 
-                  id="store-search"
-                  v-model="storeSearchQuery" 
-                  @input="searchStores(storeSearchQuery)"
-                  @focus="searchStores(storeSearchQuery)"
-                  @blur="setTimeout(() => showStoreSuggestions = false, 200)"
-                  class="form-input"
-                  placeholder="Type store name to search..."
-                  required
-                />
-                <button 
-                  v-if="storeSearchQuery"
-                  type="button"
-                  @click="clearStoreSelection"
-                  class="clear-search-btn"
-                >
-                  ×
-                </button>
-                
-                <!-- Autocomplete suggestions -->
-                <div v-if="showStoreSuggestions && filteredStores.length > 0" class="suggestions-dropdown">
-                  <div 
-                    v-for="store in filteredStores" 
-                    :key="store.storeId"
-                    @click="selectStore(store)"
-                    class="suggestion-item"
-                  >
-                    <div class="suggestion-name">{{ store.name }}</div>
-                    <div class="suggestion-address">{{ store.address }}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label for="rating">Rating:</label>
-              <select 
-                id="rating" 
-                v-model="newReviewRating" 
+              <label for="login-username">Username or Email:</label>
+              <input 
+                id="login-username"
+                v-model="loginData.usernameOrEmail" 
+                type="text"
+                placeholder="Enter username or email"
                 class="form-input"
-              >
-                <option value="5">5 - Excellent</option>
-                <option value="4">4 - Very Good</option>
-                <option value="3">3 - Good</option>
-                <option value="2">2 - Fair</option>
-                <option value="1">1 - Poor</option>
-              </select>
+              />
             </div>
-
             <div class="form-group">
-              <label for="review-text">Review Text:</label>
-              <textarea 
-                id="review-text" 
-                v-model="newReviewText" 
-                class="form-textarea"
-                placeholder="Share your experience with this store..."
-                rows="4"
-                required
-              ></textarea>
+              <label for="login-password">Password:</label>
+              <input 
+                id="login-password"
+                v-model="loginData.password" 
+                type="password"
+                placeholder="Enter password"
+                class="form-input"
+              />
             </div>
-
             <div class="form-actions">
               <button 
                 class="btn-primary" 
-                @click="createReview"
-                :disabled="loading || !selectedStoreId || !newReviewText.trim()"
+                @click="loginUser"
+                :disabled="userStore.loading"
               >
-                {{ loading ? 'Creating...' : 'Submit Review' }}
-              </button>
-              <button 
-                class="btn-secondary" 
-                @click="showCreateReviewForm = false"
-              >
-                Cancel
+                {{ userStore.loading ? 'Signing In...' : 'Sign In' }}
               </button>
             </div>
+          </div>
+
+          <!-- Registration Form -->
+          <div v-if="showRegisterForm" class="auth-form">
+            <h3>Create Account</h3>
+            <div class="form-group">
+              <label for="register-username">Username:</label>
+              <input 
+                id="register-username"
+                v-model="newUser.username" 
+                type="text"
+                placeholder="Choose a username"
+                class="form-input"
+              />
+            </div>
+            <div class="form-group">
+              <label for="register-email">Email:</label>
+              <input 
+                id="register-email"
+                v-model="newUser.email" 
+                type="email"
+                placeholder="Enter your email"
+                class="form-input"
+              />
+            </div>
+            <div class="form-group">
+              <label for="register-password">Password:</label>
+              <input 
+                id="register-password"
+                v-model="newUser.password" 
+                type="password"
+                placeholder="Choose a password"
+                class="form-input"
+              />
+            </div>
+            <div class="form-actions">
+              <button 
+                class="btn-primary" 
+                @click="registerUser"
+                :disabled="userStore.loading"
+              >
+                {{ userStore.loading ? 'Creating Account...' : 'Create Account' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Logged In State -->
+      <div v-else class="dashboard-main">
+        <!-- User Info Header -->
+        <div class="user-info">
+          <div class="user-details">
+            <h2>Welcome back, {{ currentUsername }}!</h2>
+            <p>Email: {{ userStore.email }}</p>
+            <p>You have {{ userReviews.length }} review{{ userReviews.length !== 1 ? 's' : '' }}</p>
+          </div>
+          <div class="user-actions">
+            <button class="btn-secondary" @click="logout">Sign Out</button>
           </div>
         </div>
 
         <!-- Create Store Section -->
         <div class="create-store-section">
           <div class="section-header">
-            <h3>Create a New Store</h3>
+            <h3>Add a New Store</h3>
             <button 
               class="btn-secondary" 
               @click="showCreateStoreForm = !showCreateStoreForm"
@@ -390,7 +386,6 @@ onMounted(async () => {
             </button>
           </div>
 
-          <!-- Create Store Form -->
           <div v-if="showCreateStoreForm" class="create-store-form">
             <div class="form-group">
               <label for="store-name">Store Name:</label>
@@ -414,13 +409,84 @@ onMounted(async () => {
               />
             </div>
 
+            <div class="form-group">
+              <label for="store-description">Description:</label>
+              <textarea 
+                id="store-description"
+                v-model="newStore.description" 
+                class="form-textarea"
+                placeholder="Describe the store, its specialties, and what makes it unique..."
+                rows="3"
+              ></textarea>
+            </div>
+
+            <div class="form-group">
+              <label for="store-phone">Phone Number (optional):</label>
+              <input 
+                id="store-phone"
+                v-model="newStore.phone" 
+                class="form-input"
+                placeholder="Enter phone number..."
+                type="tel"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="store-hours">Hours (optional):</label>
+              <input 
+                id="store-hours"
+                v-model="newStore.hours" 
+                class="form-input"
+                placeholder="e.g., 9:00 AM - 9:00 PM"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="store-tags">Tags:</label>
+              <div class="tags-input-container">
+                <div class="tags-display">
+                  <span 
+                    v-for="tag in newStore.tags" 
+                    :key="tag" 
+                    class="tag-item"
+                  >
+                    {{ tag }}
+                    <button 
+                      type="button" 
+                      @click="removeTag(tag)" 
+                      class="tag-remove"
+                    >
+                      ×
+                    </button>
+                  </span>
+                </div>
+                <div class="tag-input-row">
+                  <input 
+                    id="store-tags"
+                    v-model="newTag" 
+                    class="form-input"
+                    placeholder="Add tags (e.g., Fresh Seafood, Bakery, Live Fish)..."
+                    @keyup.enter="addTag"
+                  />
+                  <button 
+                    type="button" 
+                    @click="addTag" 
+                    class="btn-add-tag"
+                    :disabled="!newTag.trim()"
+                  >
+                    Add Tag
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <div class="form-actions">
               <button 
                 class="btn-primary" 
                 @click="createStore"
                 :disabled="loading || !newStore.name || !newStore.address"
               >
-                {{ loading ? 'Creating...' : 'Create Store' }}
+                {{ loading ? 'Creating...' : 'Add Store' }}
               </button>
               <button 
                 class="btn-secondary" 
@@ -434,7 +500,7 @@ onMounted(async () => {
 
         <!-- User's Created Stores -->
         <div v-if="userStores.length > 0" class="user-stores-section">
-          <h3>Your Created Stores</h3>
+          <h3>Your Added Stores</h3>
           <div v-if="loadingStores" class="loading">
             <p>Loading your stores...</p>
           </div>
@@ -476,7 +542,13 @@ onMounted(async () => {
             >
               <div class="review-header">
                 <div class="store-info">
-                  <h4>{{ getStoreName(review.storeId) }}</h4>
+                  <h4 
+                    class="store-name-link" 
+                    @click="goToStore(review.storeId)"
+                    :title="'Click to view store details'"
+                  >
+                    {{ getStoreName(review.storeId) }} →
+                  </h4>
                   <p class="store-address">{{ getStoreAddress(review.storeId) }}</p>
                 </div>
                 <div class="review-rating">
@@ -489,6 +561,15 @@ onMounted(async () => {
 
               <div class="review-content">
                 <p class="review-text">{{ review.text }}</p>
+                <div v-if="review.tags && review.tags.length > 0" class="review-tags-display">
+                  <span 
+                    v-for="tag in review.tags" 
+                    :key="tag" 
+                    class="review-tag-display"
+                  >
+                    {{ tag }}
+                  </span>
+                </div>
               </div>
 
               <div class="review-actions">
@@ -509,7 +590,7 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.user-dashboard {
+.my-account {
   width: 100%;
   max-width: 100%;
   min-height: 100vh;
@@ -519,7 +600,7 @@ onMounted(async () => {
   box-sizing: border-box;
 }
 
-.dashboard-hero {
+.account-hero {
   background: linear-gradient(135deg, #fef2f2 0%, #fff7ed 100%);
   padding: 4rem 4rem;
   text-align: center;
@@ -531,7 +612,7 @@ onMounted(async () => {
   margin-right: calc(-50vw + 50%);
 }
 
-.dashboard-hero h1 {
+.account-hero h1 {
   font-size: 3.5rem;
   color: #dc2626;
   margin-bottom: 1rem;
@@ -544,7 +625,7 @@ onMounted(async () => {
   font-weight: 500;
 }
 
-.dashboard-content {
+.account-content {
   padding: 4rem 4rem;
   width: 100vw;
   max-width: 100vw;
@@ -553,32 +634,58 @@ onMounted(async () => {
   margin-right: calc(-50vw + 50%);
 }
 
-.auth-required {
+.auth-section {
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 400px;
 }
 
-.auth-message {
+.auth-container {
   text-align: center;
   background: #f9fafb;
   padding: 3rem;
   border-radius: 16px;
   border: 2px solid #f59e0b;
-  max-width: 500px;
+  max-width: 600px;
+  width: 100%;
 }
 
-.auth-message h2 {
+.auth-container h2 {
   color: #dc2626;
   margin-bottom: 1rem;
   font-size: 2rem;
 }
 
-.auth-message p {
+.auth-container p {
   color: #374151;
   margin-bottom: 2rem;
   font-size: 1.1rem;
+}
+
+.auth-options {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-bottom: 2rem;
+}
+
+.auth-form {
+  background: white;
+  padding: 2rem;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  margin-top: 2rem;
+  text-align: left;
+  position: relative;
+  z-index: 1;
+}
+
+.auth-form h3 {
+  color: #dc2626;
+  margin-bottom: 1.5rem;
+  font-size: 1.5rem;
+  text-align: center;
 }
 
 .dashboard-main {
@@ -592,20 +699,24 @@ onMounted(async () => {
   border-radius: 16px;
   margin-bottom: 3rem;
   border: 2px solid #f59e0b;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
-.user-info h2 {
+.user-details h2 {
   color: #dc2626;
   margin-bottom: 0.5rem;
   font-size: 2rem;
 }
 
-.user-info p {
+.user-details p {
   color: #374151;
+  margin: 0.25rem 0;
   font-size: 1.1rem;
 }
 
-.create-review-section, .create-store-section, .user-stores-section {
+.create-store-section, .user-stores-section {
   background: white;
   padding: 2rem;
   border-radius: 16px;
@@ -627,7 +738,7 @@ onMounted(async () => {
   margin: 0;
 }
 
-.create-review-form, .create-store-form {
+.create-store-form {
   background: #f9fafb;
   padding: 2rem;
   border-radius: 12px;
@@ -755,6 +866,18 @@ onMounted(async () => {
   font-size: 1.2rem;
 }
 
+.store-name-link {
+  color: #dc2626;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.store-name-link:hover {
+  color: #b91c1c;
+  text-decoration: underline;
+  transform: translateX(4px);
+}
+
 .store-address {
   color: #6b7280;
   font-size: 0.9rem;
@@ -784,7 +907,25 @@ onMounted(async () => {
 .review-text {
   color: #374151;
   line-height: 1.6;
-  margin: 0;
+  margin: 0 0 1rem 0;
+}
+
+.review-tags-display {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.review-tag-display {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 0.25rem 0.75rem;
+  border-radius: 16px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 1px solid #fecaca;
 }
 
 .review-actions {
@@ -884,82 +1025,99 @@ onMounted(async () => {
   font-size: 0.8rem;
 }
 
-.autocomplete-container {
-  position: relative;
+
+.tags-input-container {
   width: 100%;
 }
 
-.clear-search-btn {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
+.tags-display {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  min-height: 2rem;
+}
+
+.tag-item {
+  display: inline-flex;
+  align-items: center;
+  background: #dc2626;
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 16px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  gap: 0.25rem;
+}
+
+.tag-remove {
   background: none;
   border: none;
-  color: #6b7280;
-  font-size: 1.5rem;
+  color: white;
+  font-size: 1.2rem;
   cursor: pointer;
   padding: 0;
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.clear-search-btn:hover {
-  color: #dc2626;
-}
-
-.suggestions-dropdown {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-top: none;
-  border-radius: 0 0 8px 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  max-height: 200px;
-  overflow-y: auto;
-  z-index: 1000;
-}
-
-.suggestion-item {
-  padding: 0.75rem;
-  cursor: pointer;
-  border-bottom: 1px solid #f3f4f6;
+  border-radius: 50%;
   transition: background-color 0.2s ease;
 }
 
-.suggestion-item:hover {
-  background-color: #f9fafb;
+.tag-remove:hover {
+  background-color: rgba(255, 255, 255, 0.2);
 }
 
-.suggestion-item:last-child {
-  border-bottom: none;
+.tag-input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
 }
 
-.suggestion-name {
+.tag-input-row .form-input {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.btn-add-tag {
+  background: #f59e0b;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
   font-weight: 600;
-  color: #374151;
-  margin-bottom: 0.25rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
 }
 
-.suggestion-address {
-  font-size: 0.9rem;
-  color: #6b7280;
+.btn-add-tag:hover:not(:disabled) {
+  background: #d97706;
+  transform: translateY(-1px);
+}
+
+.btn-add-tag:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+  transform: none;
 }
 
 /* Desktop-focused design - minimal responsive adjustments */
 @media (max-width: 1200px) {
-  .dashboard-hero {
+  .account-hero {
     padding: 3rem 2rem;
   }
   
-  .dashboard-content {
+  .account-content {
     padding: 3rem 2rem;
+  }
+  
+  .auth-options {
+    flex-direction: column;
+    align-items: center;
   }
 }
 </style>

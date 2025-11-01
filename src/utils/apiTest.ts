@@ -41,7 +41,7 @@ export class ApiTester {
       })
       console.log('✅ Store created:', storeResponse.storeId)
       
-      const storeData = await apiClient.getStore(storeResponse.storeId)
+      const storeData = await apiClient.getStoreById(storeResponse.storeId)
       console.log('✅ Store retrieved:', storeData)
       
       // Test User endpoints

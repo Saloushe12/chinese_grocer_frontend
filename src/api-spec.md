@@ -43,6 +43,192 @@
 }
 ```
 
+---
+
+# API Specification: Minimal Additions for Frontend Integration
+
+The following endpoints augment the existing API so the current frontend can render real data without fabricating it. They do not replace existing endpoints; they are additive.
+
+## Store Additions
+
+### POST /api/Store/listStores
+
+Description: Returns a list of stores. This endpoint exposes only fields intrinsic to the Store concept (no ratings, review counts, or tags).
+
+Requirements:
+- (None explicitly stated)
+
+Effects:
+- Returns an array of full store summaries.
+
+Request Body:
+
+```json
+{}
+```
+
+Success Response Body (Query):
+
+```json
+{
+  "items": [
+    {
+      "storeId": "string",
+      "name": "string",
+      "address": "string",
+      "description": "string",
+      "phone": "string",
+      "hours": "string",
+      "specialties": ["string"],
+      "image": "string"
+    }
+  ]
+}
+```
+
+Error Response Body:
+
+```json
+{
+  "error": "string"
+}
+```
+
+***
+
+### POST /api/Store/getStoreById
+
+Description: Returns a single store. This endpoint exposes only fields intrinsic to the Store concept (no ratings, review counts, or tags).
+
+Requirements:
+- The `storeId` must exist.
+
+Effects:
+- Returns the full store object.
+
+Request Body:
+
+```json
+{
+  "storeId": "string"
+}
+```
+
+Success Response Body (Query):
+
+```json
+{
+  "storeId": "string",
+  "name": "string",
+  "address": "string",
+  "description": "string",
+  "phone": "string",
+  "hours": "string",
+  "specialties": ["string"],
+  "image": "string"
+}
+```
+
+Error Response Body:
+
+```json
+{
+  "error": "string"
+}
+```
+
+## Review Additions
+
+### POST /api/Review/listReviewsForStore
+
+Description: Returns full review objects for a given `storeId`.
+
+Requirements:
+- (None explicitly stated)
+
+Effects:
+- Returns an array of review objects. This concept remains isolated from Store; it does not alter Store data.
+
+Request Body:
+
+```json
+{
+  "storeId": "string"
+}
+```
+
+Success Response Body (Query):
+
+```json
+{
+  "items": [
+    {
+      "reviewId": "string",
+      "userId": "string",
+      "storeId": "string",
+      "text": "string",
+      "rating": "number",
+      "tags": ["string"],
+      "createdAt": "string"
+    }
+  ]
+}
+```
+
+Error Response Body:
+
+```json
+{
+  "error": "string"
+}
+```
+
+***
+
+### POST /api/Review/listReviewsByUser
+
+Description: Returns full review objects authored by a given `userId`.
+
+Requirements:
+- (None explicitly stated)
+
+Effects:
+- Returns an array of review objects authored by the user. This concept remains isolated from Store; it does not alter Store data.
+
+Request Body:
+
+```json
+{
+  "userId": "string"
+}
+```
+
+Success Response Body (Query):
+
+```json
+{
+  "items": [
+    {
+      "reviewId": "string",
+      "userId": "string",
+      "storeId": "string",
+      "text": "string",
+      "rating": "number",
+      "tags": ["string"],
+      "createdAt": "string"
+    }
+  ]
+}
+```
+
+Error Response Body:
+
+```json
+{
+  "error": "string"
+}
+```
+
 ***
 
 ### POST /api/Store/deleteStore
@@ -490,6 +676,47 @@
 {
   "error": "string"
 }
+```
+
+***
+
+### POST /api/Tagging/listTagsForStore
+
+**Description:** Returns the set of tags currently associated with the specified `storeId`.
+
+**Requirements:**
+
+* (None explicitly stated)
+
+**Effects:**
+
+* Returns the set of tags for the store. Tagging remains isolated from Store; this does not modify Store data.
+
+**Request Body:**
+
+```json
+{
+  "storeId": "string"
+}
+```
+
+**Success Response Body (Query):**
+
+```json
+{
+  "tags": [
+    "string"
+  ]
+}
+```
+
+**Error Response Body:**
+
+```json
+{
+  "error": "string"
+}
+```
 
 # API Specification: Review Concept
 
