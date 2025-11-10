@@ -62,6 +62,78 @@ const newUser = ref({
   password: ''
 })
 
+// Validation rules and error messages
+const validationErrors = ref({
+  username: '',
+  email: '',
+  password: ''
+})
+
+// Validation rules
+const VALIDATION_RULES = {
+  username: {
+    minLength: 3,
+    maxLength: 30,
+    pattern: /^[a-zA-Z0-9_-]+$/,
+    message: 'Username must be 3-30 characters and contain only letters, numbers, underscores, or hyphens'
+  },
+  email: {
+    pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+    message: 'Please enter a valid email address'
+  },
+  password: {
+    minLength: 8,
+    message: 'Password must be at least 8 characters long'
+  }
+}
+
+// Validation functions
+const validateUsername = (username: string): string => {
+  if (!username || username.trim() === '') {
+    return 'Username is required'
+  }
+  if (username.length < VALIDATION_RULES.username.minLength) {
+    return `Username must be at least ${VALIDATION_RULES.username.minLength} characters`
+  }
+  if (username.length > VALIDATION_RULES.username.maxLength) {
+    return `Username must be no more than ${VALIDATION_RULES.username.maxLength} characters`
+  }
+  if (!VALIDATION_RULES.username.pattern.test(username)) {
+    return VALIDATION_RULES.username.message
+  }
+  return ''
+}
+
+const validateEmail = (email: string): string => {
+  if (!email || email.trim() === '') {
+    return 'Email is required'
+  }
+  if (!VALIDATION_RULES.email.pattern.test(email)) {
+    return VALIDATION_RULES.email.message
+  }
+  return ''
+}
+
+const validatePassword = (password: string): string => {
+  if (!password || password === '') {
+    return 'Password is required'
+  }
+  if (password.length < VALIDATION_RULES.password.minLength) {
+    return `Password must be at least ${VALIDATION_RULES.password.minLength} characters long`
+  }
+  return ''
+}
+
+const validateAll = (): boolean => {
+  validationErrors.value.username = validateUsername(newUser.value.username)
+  validationErrors.value.email = validateEmail(newUser.value.email)
+  validationErrors.value.password = validatePassword(newUser.value.password)
+  
+  return !validationErrors.value.username && 
+         !validationErrors.value.email && 
+         !validationErrors.value.password
+}
+
 // Login form data
 const loginData = ref({
   usernameOrEmail: '',
@@ -99,54 +171,100 @@ const currentUsername = computed(() => userStore.username)
 
 // Authentication methods
 const registerUser = async () => {
-  if (newUser.value.username && newUser.value.email && newUser.value.password) {
-    try {
-      // Register user without auto-login
-      const userId = await userStore.registerUser({
-        username: newUser.value.username,
-        email: newUser.value.email,
-        password: newUser.value.password
-      })
-      
-      if (userId) {
-        // Clear any auth state to ensure user is not logged in
-        // (registerUser stores userId but we don't want to auto-login)
-        // Note: Using the same keys that the user store uses internally
-        localStorage.removeItem(STORAGE_KEYS.userId)
-        localStorage.removeItem(STORAGE_KEYS.authToken)
-        userStore.clearUser()
-        
-        // Show success notification
-        notificationStore.success('Account created')
-        
-        // Clear registration form
-        newUser.value = { username: '', email: '', password: '' }
-        
-        // Close registration form and open login form
-        showRegisterForm.value = false
-        showLoginForm.value = true
-        
-        // Clear any errors
-        error.value = null
-      } else {
-        // Error is already set in userStore.error, but display it more prominently
-        if (userStore.error) {
-          error.value = userStore.error
-          notificationStore.error(userStore.error)
-        }
-      }
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.error || err.message || 'Failed to create account'
+  // Clear previous validation errors
+  validationErrors.value = { username: '', email: '', password: '' }
+  error.value = null
+  
+  // Validate all fields
+  if (!validateAll()) {
+    // Show validation errors
+    const errors = [
+      validationErrors.value.username,
+      validationErrors.value.email,
+      validationErrors.value.password
+    ].filter(e => e)
+    
+    if (errors.length > 0) {
+      const errorMessage = errors.join('. ')
       error.value = errorMessage
       notificationStore.error(errorMessage)
     }
+    return
+  }
+  
+  try {
+    // Register user without auto-login
+    const userId = await userStore.registerUser({
+      username: newUser.value.username.trim(),
+      email: newUser.value.email.trim(),
+      password: newUser.value.password
+    })
+    
+    if (userId) {
+      // Clear any auth state to ensure user is not logged in
+      // (registerUser stores userId but we don't want to auto-login)
+      // Note: Using the same keys that the user store uses internally
+      localStorage.removeItem(STORAGE_KEYS.userId)
+      localStorage.removeItem(STORAGE_KEYS.authToken)
+      userStore.clearUser()
+      
+      // Show success notification
+      notificationStore.success('Account created successfully!')
+      
+      // Clear registration form
+      newUser.value = { username: '', email: '', password: '' }
+      validationErrors.value = { username: '', email: '', password: '' }
+      
+      // Close registration form and open login form
+      showRegisterForm.value = false
+      showLoginForm.value = true
+      
+      // Clear any errors
+      error.value = null
+    } else {
+      // Error is already set in userStore.error, but display it more prominently
+      if (userStore.error) {
+        error.value = userStore.error
+        notificationStore.error(userStore.error)
+      }
+    }
+  } catch (err: any) {
+    // Parse backend error messages to show specific validation errors
+    let errorMessage = err.response?.data?.error || err.message || 'Failed to create account'
+    
+    // Map common backend error messages to user-friendly messages
+    if (errorMessage.includes('already exists')) {
+      if (errorMessage.includes('Username')) {
+        errorMessage = 'This username is already taken. Please choose a different username.'
+        validationErrors.value.username = 'Username already exists'
+      } else if (errorMessage.includes('Email')) {
+        errorMessage = 'This email is already registered. Please use a different email or try logging in.'
+        validationErrors.value.email = 'Email already registered'
+      }
+    } else if (errorMessage.includes('Password must be')) {
+      errorMessage = 'Password must be at least 8 characters long.'
+      validationErrors.value.password = 'Password must be at least 8 characters'
+    } else if (errorMessage.includes('Invalid response')) {
+      errorMessage = 'Unable to create account. Please check your connection and try again.'
+    }
+    
+    error.value = errorMessage
+    notificationStore.error(errorMessage)
   }
 }
 
 const loginUser = async () => {
-  if (loginData.value.usernameOrEmail && loginData.value.password) {
+  error.value = null
+  
+  if (!loginData.value.usernameOrEmail || !loginData.value.password) {
+    error.value = 'Please enter both username/email and password'
+    notificationStore.error('Please enter both username/email and password')
+    return
+  }
+  
+  try {
     const success = await userStore.login(
-      loginData.value.usernameOrEmail,
+      loginData.value.usernameOrEmail.trim(),
       loginData.value.password
     )
     if (success) {
@@ -155,12 +273,31 @@ const loginUser = async () => {
       showLoginForm.value = false
       showRegisterForm.value = false
       await loadUserData()
+      error.value = null
     } else {
-      // Error is already set in userStore.error, but display it more prominently
-      if (userStore.error) {
-        error.value = userStore.error
+      // Parse backend error messages to show specific errors
+      let errorMessage = userStore.error || 'Login failed'
+      
+      if (errorMessage.includes('Invalid credentials')) {
+        errorMessage = 'Invalid username/email or password. Please check your credentials and try again.'
+      } else if (errorMessage.includes('User') && errorMessage.includes('not found')) {
+        errorMessage = 'No account found with this username or email. Please check your credentials or create an account.'
+      } else if (errorMessage.includes('Invalid response')) {
+        errorMessage = 'Unable to log in. Please check your connection and try again.'
       }
+      
+      error.value = errorMessage
+      notificationStore.error(errorMessage)
     }
+  } catch (err: any) {
+    let errorMessage = err.response?.data?.error || err.message || 'Login failed'
+    
+    if (errorMessage.includes('Invalid credentials')) {
+      errorMessage = 'Invalid username/email or password. Please check your credentials and try again.'
+    }
+    
+    error.value = errorMessage
+    notificationStore.error(errorMessage)
   }
 }
 
@@ -559,6 +696,9 @@ onMounted(async () => {
                 class="form-input"
               />
             </div>
+            <div v-if="error" class="error-message">
+              {{ error }}
+            </div>
             <div class="form-actions">
               <button 
                 class="btn-primary" 
@@ -573,16 +713,30 @@ onMounted(async () => {
           <!-- Registration Form -->
           <div v-if="showRegisterForm" class="auth-form">
             <h3>Create Account</h3>
+            
+            <!-- Validation Rules Display -->
+            <div class="validation-rules">
+              <h4>Account Requirements:</h4>
+              <ul>
+                <li><strong>Username:</strong> 3-30 characters, letters, numbers, underscores, or hyphens only</li>
+                <li><strong>Email:</strong> Must be a valid email address</li>
+                <li><strong>Password:</strong> At least 8 characters long</li>
+              </ul>
+            </div>
+            
             <div class="form-group">
               <label for="register-username">Username:</label>
               <input 
                 id="register-username"
                 v-model="newUser.username" 
                 type="text"
-                placeholder="Choose a username"
-                class="form-input"
+                placeholder="Choose a username (3-30 characters)"
+                :class="['form-input', { 'error': validationErrors.username }]"
+                @blur="validationErrors.username = validateUsername(newUser.username)"
               />
+              <span v-if="validationErrors.username" class="field-error">{{ validationErrors.username }}</span>
             </div>
+            
             <div class="form-group">
               <label for="register-email">Email:</label>
               <input 
@@ -590,19 +744,29 @@ onMounted(async () => {
                 v-model="newUser.email" 
                 type="email"
                 placeholder="Enter your email"
-                class="form-input"
+                :class="['form-input', { 'error': validationErrors.email }]"
+                @blur="validationErrors.email = validateEmail(newUser.email)"
               />
+              <span v-if="validationErrors.email" class="field-error">{{ validationErrors.email }}</span>
             </div>
+            
             <div class="form-group">
               <label for="register-password">Password:</label>
               <input 
                 id="register-password"
                 v-model="newUser.password" 
                 type="password"
-                placeholder="Choose a password"
-                class="form-input"
+                placeholder="Choose a password (min. 8 characters)"
+                :class="['form-input', { 'error': validationErrors.password }]"
+                @blur="validationErrors.password = validatePassword(newUser.password)"
               />
+              <span v-if="validationErrors.password" class="field-error">{{ validationErrors.password }}</span>
             </div>
+            
+            <div v-if="error" class="error-message">
+              {{ error }}
+            </div>
+            
             <div class="form-actions">
               <button 
                 class="btn-primary" 
@@ -1102,6 +1266,55 @@ onMounted(async () => {
   display: flex;
   gap: 1rem;
   margin-top: 2rem;
+}
+
+.validation-rules {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.validation-rules h4 {
+  margin: 0 0 0.5rem 0;
+  color: #0369a1;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.validation-rules ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: #0c4a6e;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.validation-rules li {
+  margin-bottom: 0.25rem;
+}
+
+.validation-rules li:last-child {
+  margin-bottom: 0;
+}
+
+.field-error {
+  display: block;
+  color: #dc2626;
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+  font-weight: 500;
+}
+
+.form-input.error {
+  border-color: #dc2626;
+  background-color: #fef2f2;
+}
+
+.form-input.error:focus {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
 }
 
 .error-message {
