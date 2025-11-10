@@ -29,10 +29,15 @@ import type {
 // Use environment variable for deployed backend, default to '/api' for local dev (Vite proxy)
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
 
+// Log API base URL for debugging (in both dev and production to help diagnose issues)
+console.log('🔧 API Base URL:', API_BASE)
+console.log('🔧 VITE_API_BASE_URL env var:', import.meta.env.VITE_API_BASE_URL || '(not set, using default /api)')
+
 class ApiClient {
   private client: AxiosInstance
 
   constructor(baseURL: string = '') {
+    console.log('🔧 Creating ApiClient with baseURL:', baseURL)
     this.client = axios.create({
       baseURL,
       timeout: 10000,
@@ -135,43 +140,105 @@ class ApiClient {
 
   // User API Methods
   async registerUser(data: RegisterUserRequest): Promise<UserResponse> {
-    const response = await this.client.post('/api/User/registerUser', data)
-    console.log('📥 REGISTER RAW RESPONSE:', response)
-    console.log('📥 registerUser response.data:', response.data)
-    console.log('📥 registerUser response.data.userId:', response.data?.userId)
-    
-    // Check for error response
-    if (response.data.error) {
-      throw new Error(response.data.error)
+    try {
+      const response = await this.client.post('/api/User/registerUser', data)
+      console.log('📥 REGISTER RAW RESPONSE:', response)
+      console.log('📥 registerUser response.data:', response.data)
+      console.log('📥 registerUser response.status:', response.status)
+      console.log('📥 registerUser response.headers:', response.headers)
+      
+      // Handle case where response.data might be undefined or empty
+      if (!response.data) {
+        console.error('❌ registerUser: response.data is undefined or null', { 
+          status: response.status, 
+          statusText: response.statusText,
+          headers: response.headers 
+        })
+        throw new Error('Invalid response: response data is missing')
+      }
+      
+      // Check for error response
+      if (response.data.error) {
+        throw new Error(response.data.error)
+      }
+      
+      // Validate response structure
+      if (!response.data.userId) {
+        console.error('❌ registerUser: No userId in response', { 
+          data: response.data,
+          keys: Object.keys(response.data || {}),
+          status: response.status 
+        })
+        throw new Error('Invalid response: userId is missing')
+      }
+      
+      return response.data
+    } catch (error: any) {
+      // Enhanced error logging
+      console.error('❌ registerUser error:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        config: {
+          url: error.config?.url,
+          baseURL: error.config?.baseURL,
+          method: error.config?.method
+        }
+      })
+      throw error
     }
-    
-    // Validate response structure
-    if (!response.data.userId) {
-      console.error('❌ registerUser: No userId in response', response.data)
-      throw new Error('Invalid response: userId is missing')
-    }
-    
-    return response.data
   }
 
   async authenticateUser(data: AuthenticateUserRequest): Promise<UserResponse> {
-    const response = await this.client.post('/api/User/authenticateUser', data)
-    console.log('📥 AUTH RAW RESPONSE:', response)
-    console.log('📥 authenticateUser response.data:', response.data)
-    console.log('📥 authenticateUser response.data.userId:', response.data?.userId)
-    
-    // Check for error response
-    if (response.data.error) {
-      throw new Error(response.data.error)
+    try {
+      const response = await this.client.post('/api/User/authenticateUser', data)
+      console.log('📥 AUTH RAW RESPONSE:', response)
+      console.log('📥 authenticateUser response.data:', response.data)
+      console.log('📥 authenticateUser response.status:', response.status)
+      console.log('📥 authenticateUser response.headers:', response.headers)
+      
+      // Handle case where response.data might be undefined or empty
+      if (!response.data) {
+        console.error('❌ authenticateUser: response.data is undefined or null', { 
+          status: response.status, 
+          statusText: response.statusText,
+          headers: response.headers 
+        })
+        throw new Error('Invalid response: response data is missing')
+      }
+      
+      // Check for error response
+      if (response.data.error) {
+        throw new Error(response.data.error)
+      }
+      
+      // Validate response structure
+      if (!response.data.userId) {
+        console.error('❌ authenticateUser: No userId in response', { 
+          data: response.data,
+          keys: Object.keys(response.data || {}),
+          status: response.status 
+        })
+        throw new Error('Invalid response: userId is missing')
+      }
+      
+      return response.data
+    } catch (error: any) {
+      // Enhanced error logging
+      console.error('❌ authenticateUser error:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        config: {
+          url: error.config?.url,
+          baseURL: error.config?.baseURL,
+          method: error.config?.method
+        }
+      })
+      throw error
     }
-    
-    // Validate response structure
-    if (!response.data.userId) {
-      console.error('❌ authenticateUser: No userId in response', response.data)
-      throw new Error('Invalid response: userId is missing')
-    }
-    
-    return response.data
   }
 
   async getUserById(userId: string): Promise<User | null> {
