@@ -104,36 +104,36 @@ class ApiClient {
 
   // Store API Methods
   async createStore(data: CreateStoreRequest): Promise<CreateStoreResponse> {
-    const response = await this.client.post('/api/Store/createStore', data)
+    const response = await this.client.post('/Store/createStore', data)
     return response.data
   }
 
   async deleteStore(storeId: string): Promise<{ status: string; storeId: string }> {
-    const response = await this.client.post('/api/Store/deleteStore', { storeId })
+    const response = await this.client.post('/Store/deleteStore', { storeId })
     return response.data
   }
 
   async listStores(): Promise<Store[]> {
-    const response = await this.client.post('/api/Store/_listAllStores', {})
+    const response = await this.client.post('/Store/_listAllStores', {})
     // Backend returns array directly
     return Array.isArray(response.data) ? response.data : []
   }
 
   async getStoreById(storeId: string): Promise<Store | null> {
-    const response = await this.client.post('/api/Store/_getStoreDetails', { storeId })
+    const response = await this.client.post('/Store/_getStoreDetails', { storeId })
     // Backend returns array - get first item or null
     const stores = Array.isArray(response.data) ? response.data : []
     return stores.length > 0 ? stores[0] : null
   }
 
   async getStoresByName(data: GetStoresByNameRequest): Promise<Store[]> {
-    const response = await this.client.post('/api/Store/_getStoresByName', data)
+    const response = await this.client.post('/Store/_getStoresByName', data)
     // Backend returns array of store objects
     return Array.isArray(response.data) ? response.data : []
   }
 
   async getStoresByAddress(data: GetStoresByAddressRequest): Promise<Store[]> {
-    const response = await this.client.post('/api/Store/_getStoresByAddress', data)
+    const response = await this.client.post('/Store/_getStoresByAddress', data)
     // Backend returns array of store objects
     return Array.isArray(response.data) ? response.data : []
   }
@@ -141,7 +141,7 @@ class ApiClient {
   // User API Methods
   async registerUser(data: RegisterUserRequest): Promise<UserResponse> {
     try {
-      const response = await this.client.post('/api/User/registerUser', data)
+      const response = await this.client.post('/User/registerUser', data)
       console.log('📥 REGISTER RAW RESPONSE:', response)
       console.log('📥 registerUser response.data:', response.data)
       console.log('📥 registerUser response.status:', response.status)
@@ -192,7 +192,7 @@ class ApiClient {
 
   async authenticateUser(data: AuthenticateUserRequest): Promise<UserResponse> {
     try {
-      const response = await this.client.post('/api/User/authenticateUser', data)
+      const response = await this.client.post('/User/authenticateUser', data)
       console.log('📥 AUTH RAW RESPONSE:', response)
       console.log('📥 authenticateUser response.data:', response.data)
       console.log('📥 authenticateUser response.status:', response.status)
@@ -242,7 +242,7 @@ class ApiClient {
   }
 
   async getUserById(userId: string): Promise<User | null> {
-    const response = await this.client.post('/api/User/_getUserDetails', { userId })
+    const response = await this.client.post('/User/_getUserDetails', { userId })
     // Backend returns array - get first item or null
     const users = Array.isArray(response.data) ? response.data : []
     if (users.length === 0) return null
@@ -255,22 +255,22 @@ class ApiClient {
   }
 
   async updateUserEmail(data: UpdateUserEmailRequest): Promise<void> {
-    await this.client.post('/api/User/updateUserEmail', data)
+    await this.client.post('/User/updateUserEmail', data)
   }
 
   async deleteUser(userId: string): Promise<{ status: string; userId: string }> {
-    const response = await this.client.post('/api/User/deleteUser', { userId })
+    const response = await this.client.post('/User/deleteUser', { userId })
     return response.data
   }
 
   // Review API Methods
   async createReview(data: CreateReviewRequest): Promise<CreateReviewResponse> {
-    const response = await this.client.post('/api/Review/createReview', data)
+    const response = await this.client.post('/Review/createReview', data)
     return response.data
   }
 
   async deleteReview(reviewId: string): Promise<{ status: string; reviewId: string }> {
-    const response = await this.client.post('/api/Review/deleteReview', { reviewId })
+    const response = await this.client.post('/Review/deleteReview', { reviewId })
     return response.data
   }
 
@@ -281,7 +281,7 @@ class ApiClient {
   }
 
   async listReviewsForStore(data: GetReviewsForStoreRequest): Promise<Review[]> {
-    const response = await this.client.post('/api/Review/_getReviewsForStoreFull', data)
+    const response = await this.client.post('/Review/_getReviewsForStoreFull', data)
     // Backend returns array of review objects
     return Array.isArray(response.data) ? response.data : []
   }
@@ -293,18 +293,18 @@ class ApiClient {
   }
 
   async listReviewsByUser(data: GetReviewsByUserRequest): Promise<Review[]> {
-    const response = await this.client.post('/api/Review/_getReviewsByUserFull', data)
+    const response = await this.client.post('/Review/_getReviewsByUserFull', data)
     // Backend returns array of review objects
     return Array.isArray(response.data) ? response.data : []
   }
 
   // Rating API Methods
   async updateRating(data: UpdateRatingRequest): Promise<void> {
-    await this.client.post('/api/Rating/updateRating', data)
+    await this.client.post('/Rating/updateRating', data)
   }
 
   async getRating(data: GetRatingRequest): Promise<Rating | null> {
-    const response = await this.client.post('/api/Rating/_getRating', data)
+    const response = await this.client.post('/Rating/_getRating', data)
     // Backend returns array - get first item or null
     const ratings = Array.isArray(response.data) ? response.data : []
     if (ratings.length === 0) {
@@ -318,15 +318,15 @@ class ApiClient {
 
   // Tagging API Methods
   async addTag(data: AddTagRequest): Promise<void> {
-    await this.client.post('/api/Tagging/addTag', data)
+    await this.client.post('/Tagging/addTag', data)
   }
 
   async removeTag(data: RemoveTagRequest): Promise<void> {
-    await this.client.post('/api/Tagging/removeTag', data)
+    await this.client.post('/Tagging/removeTag', data)
   }
 
   async getStoresByTag(data: GetStoresByTagRequest): Promise<Store[]> {
-    const response = await this.client.post('/api/Tagging/getStoresByTag', data)
+    const response = await this.client.post('/Tagging/getStoresByTag', data)
     // Backend returns { results: Store[], error?: string }
     if (response.data.error) {
       throw new Error(response.data.error)
@@ -335,7 +335,7 @@ class ApiClient {
   }
 
   async listTagsForStore(data: GetTagsForStoreRequest): Promise<string[]> {
-    const response = await this.client.post('/api/Tagging/_getTagsForStore', data)
+    const response = await this.client.post('/Tagging/_getTagsForStore', data)
     // Backend returns array - get first item or empty array
     const taggings = Array.isArray(response.data) ? response.data : []
     if (taggings.length === 0) return []
