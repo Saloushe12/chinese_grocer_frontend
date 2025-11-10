@@ -26,6 +26,9 @@ import type {
   GetTagsForStoreRequest
 } from '@/types/api'
 
+// Use environment variable for deployed backend, default to '/api' for local dev (Vite proxy)
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
+
 class ApiClient {
   private client: AxiosInstance
 
@@ -273,6 +276,6 @@ class ApiClient {
   }
 }
 
-// Create and export a singleton instance
-export const apiClient = new ApiClient()
+// Create and export a singleton instance with the API base URL
+export const apiClient = new ApiClient(API_BASE)
 export default apiClient
