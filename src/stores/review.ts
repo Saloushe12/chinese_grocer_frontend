@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import apiClient from '@/api/client'
-import type { Review, CreateReviewRequest, ReviewsResponse } from '@/types/api'
+import type { Review, CreateReviewRequest } from '@/types/api'
 
 export const useReviewStore = defineStore('review', () => {
   // State
@@ -90,30 +90,14 @@ export const useReviewStore = defineStore('review', () => {
       
       const response = await apiClient.createReview(reviewData)
       
-      // Create review object
-      const newReview: Review = {
-        reviewId: response.reviewId,
-        userId: reviewData.userId,
-        storeId: reviewData.storeId,
-        text: reviewData.text,
-        rating: reviewData.rating,
-        tags: reviewData.tags
+      if (response.reviewId) {
+        // Reload reviews from backend to ensure we have the latest data
+        // This ensures consistency with backend state
+        await Promise.all([
+          listReviewsForStore(reviewData.storeId),
+          listReviewsByUser(reviewData.userId)
+        ])
       }
-      
-      // Add to local state
-      reviews.value.push(newReview)
-      
-      // Update store-specific reviews
-      if (!storeReviews.value[reviewData.storeId]) {
-        storeReviews.value[reviewData.storeId] = []
-      }
-      storeReviews.value[reviewData.storeId].push(newReview)
-      
-      // Update user-specific reviews
-      if (!userReviews.value[reviewData.userId]) {
-        userReviews.value[reviewData.userId] = []
-      }
-      userReviews.value[reviewData.userId].push(newReview)
       
       return response.reviewId
     } catch (err: any) {
@@ -130,29 +114,26 @@ export const useReviewStore = defineStore('review', () => {
       setLoading(true)
       clearError()
       
+      // Find the review before deleting to know which stores/users to refresh
+      const reviewToDelete = reviews.value.find(r => r.reviewId === reviewId)
+      const storeId = reviewToDelete?.storeId
+      const userId = reviewToDelete?.userId
+      
       await apiClient.deleteReview(reviewId)
       
-      // Find and remove from local state
+      // Reload reviews from backend to ensure we have the latest data
+      // This ensures consistency with backend state
+      if (storeId) {
+        await listReviewsForStore(storeId)
+      }
+      if (userId) {
+        await listReviewsByUser(userId)
+      }
+      
+      // Also remove from global reviews list
       const reviewIndex = reviews.value.findIndex(review => review.reviewId === reviewId)
       if (reviewIndex > -1) {
-        const review = reviews.value[reviewIndex]
         reviews.value.splice(reviewIndex, 1)
-        
-        // Remove from store-specific reviews
-        if (storeReviews.value[review.storeId]) {
-          const storeIndex = storeReviews.value[review.storeId].findIndex(r => r.reviewId === reviewId)
-          if (storeIndex > -1) {
-            storeReviews.value[review.storeId].splice(storeIndex, 1)
-          }
-        }
-        
-        // Remove from user-specific reviews
-        if (userReviews.value[review.userId]) {
-          const userIndex = userReviews.value[review.userId].findIndex(r => r.reviewId === reviewId)
-          if (userIndex > -1) {
-            userReviews.value[review.userId].splice(userIndex, 1)
-          }
-        }
       }
       
       return true
@@ -171,7 +152,7 @@ export const useReviewStore = defineStore('review', () => {
       clearError()
       
       const response = await apiClient.getReviewsForStore({ storeId })
-      return response.reviewIds
+      return response
     } catch (err: any) {
       const errorMessage = err.response?.data?.error || 'Failed to get reviews for store'
       setError(errorMessage)
@@ -186,21 +167,15 @@ export const useReviewStore = defineStore('review', () => {
       setLoading(true)
       clearError()
       
+      // Always fetch from backend - this is the single source of truth
       const response = await apiClient.listReviewsForStore({ storeId })
       
-      // Update local state
-      response.items.forEach(review => {
-        // Add to store-specific reviews
-        if (!storeReviews.value[storeId]) {
-          storeReviews.value[storeId] = []
-        }
-        const existingIndex = storeReviews.value[storeId].findIndex(r => r.reviewId === review.reviewId)
-        if (existingIndex > -1) {
-          storeReviews.value[storeId][existingIndex] = review
-        } else {
-          storeReviews.value[storeId].push(review)
-        }
-        
+      // Replace store-specific reviews with backend data (not merge)
+      // This ensures we have the latest data from backend
+      storeReviews.value[storeId] = [...response]
+      
+      // Update user-specific reviews and global reviews
+      response.forEach(review => {
         // Add to user-specific reviews
         if (!userReviews.value[review.userId]) {
           userReviews.value[review.userId] = []
@@ -221,12 +196,20 @@ export const useReviewStore = defineStore('review', () => {
         }
       })
       
-      return response.items
+      // Remove reviews from storeReviews that are no longer in backend response
+      // This handles deleted reviews
+      const responseReviewIds = new Set(response.map(r => r.reviewId))
+      if (storeReviews.value[storeId]) {
+        storeReviews.value[storeId] = storeReviews.value[storeId].filter(r => responseReviewIds.has(r.reviewId))
+      }
+      
+      return response
     } catch (err: any) {
       const errorMessage = err.response?.data?.error || 'Failed to list reviews for store'
       setError(errorMessage)
       
-      // If API fails, return cached reviews from localStorage if available
+      // On error, return cached reviews but log the error
+      console.error('Failed to fetch reviews from backend, using cached data:', err)
       return storeReviews.value[storeId] || []
     } finally {
       setLoading(false)
@@ -239,7 +222,7 @@ export const useReviewStore = defineStore('review', () => {
       clearError()
       
       const response = await apiClient.getReviewsByUser({ userId })
-      return response.reviewIds
+      return response
     } catch (err: any) {
       const errorMessage = err.response?.data?.error || 'Failed to get reviews by user'
       setError(errorMessage)
@@ -254,21 +237,15 @@ export const useReviewStore = defineStore('review', () => {
       setLoading(true)
       clearError()
       
+      // Always fetch from backend - this is the single source of truth
       const response = await apiClient.listReviewsByUser({ userId })
       
-      // Update local state
-      response.items.forEach(review => {
-        // Add to user-specific reviews
-        if (!userReviews.value[userId]) {
-          userReviews.value[userId] = []
-        }
-        const existingIndex = userReviews.value[userId].findIndex(r => r.reviewId === review.reviewId)
-        if (existingIndex > -1) {
-          userReviews.value[userId][existingIndex] = review
-        } else {
-          userReviews.value[userId].push(review)
-        }
-        
+      // Replace user-specific reviews with backend data (not merge)
+      // This ensures we have the latest data from backend
+      userReviews.value[userId] = [...response]
+      
+      // Update store-specific reviews and global reviews
+      response.forEach(review => {
         // Add to store-specific reviews
         if (!storeReviews.value[review.storeId]) {
           storeReviews.value[review.storeId] = []
@@ -289,12 +266,20 @@ export const useReviewStore = defineStore('review', () => {
         }
       })
       
-      return response.items
+      // Remove reviews from userReviews that are no longer in backend response
+      // This handles deleted reviews
+      const responseReviewIds = new Set(response.map(r => r.reviewId))
+      if (userReviews.value[userId]) {
+        userReviews.value[userId] = userReviews.value[userId].filter(r => responseReviewIds.has(r.reviewId))
+      }
+      
+      return response
     } catch (err: any) {
       const errorMessage = err.response?.data?.error || 'Failed to list reviews by user'
       setError(errorMessage)
       
-      // If API fails, return cached reviews from localStorage if available
+      // On error, return cached reviews but log the error
+      console.error('Failed to fetch reviews from backend, using cached data:', err)
       return userReviews.value[userId] || []
     } finally {
       setLoading(false)

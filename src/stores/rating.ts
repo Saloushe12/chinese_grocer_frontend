@@ -113,16 +113,22 @@ export const useRatingStore = defineStore('rating', () => {
       
       const response = await apiClient.getRating({ storeId })
       
-      // Update local state
-      ratings.value[storeId] = response
+      if (response) {
+        // Update local state
+        ratings.value[storeId] = response
+        return response
+      }
       
-      return response
+      // If no rating found, return default
+      const defaultRating = { aggregatedRating: 0, reviewCount: 0 }
+      ratings.value[storeId] = defaultRating
+      return defaultRating
     } catch (err: any) {
       const errorMessage = err.response?.data?.error || 'Failed to get rating'
       setError(errorMessage)
       
       // If API fails, return cached rating from localStorage if available
-      return ratings.value[storeId] || null
+      return ratings.value[storeId] || { aggregatedRating: 0, reviewCount: 0 }
     } finally {
       setLoading(false)
     }

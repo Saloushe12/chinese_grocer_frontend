@@ -1,68 +1,98 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
+import { useStoreStore } from '@/stores/store'
+import { useRatingStore } from '@/stores/rating'
+import { useTaggingStore } from '@/stores/tagging'
+import type { Store } from '@/types/api'
 
-const featuredStores = ref([
-  { 
-    id: 1, 
-    name: 'Kam Man Food', 
-    address: '219 Quincy Ave, Quincy, MA 02169', 
-    rating: 4.5,
-    reviewCount: 127,
-    specialties: ['Fresh Seafood', 'Live Fish', 'Asian Vegetables'],
-    description: 'Large Asian supermarket with extensive selection of Chinese groceries, fresh seafood, and live fish tanks.',
-    image: 'https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=300&h=200&fit=crop&crop=center'
-  },
-  { 
-    id: 2, 
-    name: 'Super 88 Market', 
-    address: '1095 Commonwealth Ave, Boston, MA 02215', 
-    rating: 4.2,
-    reviewCount: 89,
-    specialties: ['Bakery', 'Hot Food', 'Frozen Foods'],
-    description: 'Popular Asian grocery chain with fresh bakery, hot food counter, and wide variety of frozen Asian foods.',
-    image: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=300&h=200&fit=crop&crop=center'
-  },
-  { 
-    id: 3, 
-    name: 'C-Mart', 
-    address: '692 Washington St, Boston, MA 02111', 
-    rating: 4.3,
-    reviewCount: 156,
-    specialties: ['Chinese Medicine', 'Tea', 'Spices'],
-    description: 'Traditional Chinese grocery store specializing in Chinese medicine, premium teas, and authentic spices.',
-    image: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=300&h=200&fit=crop&crop=center'
-  },
-  { 
-    id: 4, 
-    name: 'Great Wall Supermarket', 
-    address: '1 Brighton Ave, Allston, MA 02134', 
-    rating: 4.4,
-    reviewCount: 203,
-    specialties: ['Fresh Produce', 'Meat', 'Dairy'],
-    description: 'Well-stocked supermarket with fresh produce, quality meat selection, and Asian dairy products.',
-    image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300&h=200&fit=crop&crop=center'
-  },
-  { 
-    id: 5, 
-    name: 'H-Mart', 
-    address: '581 Massachusetts Ave, Cambridge, MA 02139', 
-    rating: 4.6,
-    reviewCount: 312,
-    specialties: ['Korean-Chinese', 'Prepared Foods', 'Household Items'],
-    description: 'Korean-owned chain with excellent selection of Korean-Chinese products, prepared foods, and household essentials.',
-    image: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=300&h=200&fit=crop&crop=center'
-  },
-  { 
-    id: 6, 
-    name: 'Ranch 99', 
-    address: '99 Middlesex Turnpike, Burlington, MA 01803', 
-    rating: 4.1,
-    reviewCount: 98,
-    specialties: ['Bulk Items', 'Snacks', 'Beverages'],
-    description: 'Large format store with bulk items, extensive snack selection, and Asian beverages.',
-    image: 'https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=300&h=200&fit=crop&crop=center'
+interface FeaturedStoreDisplay extends Store {
+  id: string
+  rating: number
+  reviewCount: number
+  tags: string[]
+}
+
+// Store instances
+const storeStore = useStoreStore()
+const ratingStore = useRatingStore()
+const taggingStore = useTaggingStore()
+
+// State
+const featuredStores = ref<FeaturedStoreDisplay[]>([])
+const loading = ref(false)
+const error = ref<string | null>(null)
+
+// Load featured stores from database
+const loadFeaturedStores = async () => {
+  try {
+    loading.value = true
+    error.value = null
+    
+    // Load all stores from backend
+    const allStores = await storeStore.listStores()
+    
+    if (allStores.length === 0) {
+      featuredStores.value = []
+      return
+    }
+    
+    // Fetch ratings and tags for each store
+    const storesWithData = await Promise.all(
+      allStores.map(async (store) => {
+        // Fetch rating
+        const rating = await ratingStore.getRating(store.storeId)
+        
+        // Fetch tags
+        const tags = await taggingStore.listTagsForStore(store.storeId)
+        
+        return {
+          ...store,
+          id: store.storeId,
+          rating: rating?.aggregatedRating || 0,
+          reviewCount: rating?.reviewCount || 0,
+          tags: tags
+        } as FeaturedStoreDisplay
+      })
+    )
+    
+    // Sort by rating (highest first), then by review count
+    storesWithData.sort((a, b) => {
+      if (b.rating !== a.rating) {
+        return b.rating - a.rating
+      }
+      return b.reviewCount - a.reviewCount
+    })
+    
+    // Show top 6 stores (or all if there are fewer than 6)
+    featuredStores.value = storesWithData.slice(0, 6)
+  } catch (err: any) {
+    console.error('Failed to load featured stores:', err)
+    error.value = err.message || 'Failed to load featured stores'
+    featuredStores.value = []
+  } finally {
+    loading.value = false
   }
-])
+}
+
+// Watch for store count changes to update featured stores in real-time
+// Use length to avoid triggering on every deep change
+const lastStoreCount = ref(0)
+watch(() => storeStore.stores.length, (newCount) => {
+  if (newCount !== lastStoreCount.value) {
+    lastStoreCount.value = newCount
+    // Debounce to avoid excessive calls
+    setTimeout(() => {
+      loadFeaturedStores()
+    }, 300)
+  }
+})
+
+// Lifecycle
+onMounted(() => {
+  // Initialize lastStoreCount
+  lastStoreCount.value = storeStore.stores.length
+  loadFeaturedStores()
+})
 </script>
 
 <template>
@@ -94,27 +124,54 @@ const featuredStores = ref([
     <section class="featured-stores">
       <div class="section-header">
         <h2>Featured Chinese Grocery Stores</h2>
-        <p>Discover the best local Chinese grocery stores in Boston, MA</p>
+        <p>Discover the best local Chinese grocery stores</p>
       </div>
-      <div class="stores-grid">
-        <div v-for="store in featuredStores" :key="store.id" class="store-card">
+      
+      <div v-if="loading" class="loading">
+        <p>Loading featured stores...</p>
+      </div>
+      
+      <div v-else-if="error" class="error">
+        <p>{{ error }}</p>
+        <button @click="loadFeaturedStores" class="retry-btn">Retry</button>
+      </div>
+      
+      <div v-else-if="featuredStores.length === 0" class="no-stores">
+        <p>No stores available yet.</p>
+        <p>Be the first to add a Chinese grocery store!</p>
+        <button class="btn-primary" @click="$router.push('/my-account')">Add a Store</button>
+      </div>
+      
+      <div v-else class="stores-grid">
+        <div v-for="store in featuredStores" :key="store.storeId" class="store-card">
           <div class="store-image">
-            <img :src="store.image" :alt="store.name" />
+            <img 
+              v-if="store.image" 
+              :src="store.image" 
+              :alt="store.name"
+              @error="(e: any) => { if (e.target) e.target.src = 'https://via.placeholder.com/400x300?text=No+Image' }"
+            />
+            <div v-else class="no-image">No Image</div>
           </div>
           <div class="store-info">
             <h3>{{ store.name }}</h3>
             <p class="store-address">{{ store.address }}</p>
+            <p v-if="store.phone" class="store-phone">{{ store.phone }}</p>
+            <p v-if="store.hours" class="store-hours">{{ store.hours }}</p>
             <div class="store-rating">
-              <span class="rating-stars">⭐ {{ store.rating }}</span>
-              <span class="review-count">({{ store.reviewCount }} reviews)</span>
+              <span class="rating-stars">⭐ {{ store.rating > 0 ? store.rating.toFixed(1) : 'No rating' }}</span>
+              <span class="review-count" v-if="store.reviewCount > 0">({{ store.reviewCount }} reviews)</span>
             </div>
             <div class="store-specialties">
               <span v-for="specialty in store.specialties" :key="specialty" class="specialty-tag">
                 {{ specialty }}
               </span>
+              <span v-for="tag in store.tags" :key="tag" class="specialty-tag user-tag">
+                {{ tag }}
+              </span>
             </div>
-            <p class="store-description">{{ store.description }}</p>
-            <button class="view-store-btn" @click="$router.push(`/store/${store.id}`)">View Store Details</button>
+            <p v-if="store.description" class="store-description">{{ store.description }}</p>
+            <button class="view-store-btn" @click="$router.push(`/store/${store.storeId}`)">View Store Details</button>
           </div>
         </div>
       </div>
@@ -333,6 +390,83 @@ const featuredStores = ref([
 
 .store-card:hover .store-image img {
   transform: scale(1.05);
+}
+
+.no-image {
+  color: #9ca3af;
+  font-size: 0.9rem;
+}
+
+.store-phone {
+  color: #6b7280;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.store-hours {
+  color: #6b7280;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.specialty-tag.user-tag {
+  background: #dc2626;
+  color: white;
+  border: 1px solid #dc2626;
+  position: relative;
+}
+
+.specialty-tag.user-tag::after {
+  content: '★';
+  margin-left: 0.25rem;
+  font-size: 0.6rem;
+}
+
+.loading, .error {
+  text-align: center;
+  padding: 4rem;
+  color: #6b7280;
+}
+
+.error p {
+  margin-bottom: 1rem;
+  color: #dc2626;
+  font-size: 1.1rem;
+}
+
+.retry-btn {
+  padding: 0.75rem 1.5rem;
+  background: #dc2626;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.retry-btn:hover {
+  background: #b91c1c;
+}
+
+.no-stores {
+  text-align: center;
+  padding: 4rem;
+  color: #6b7280;
+  background: #f9fafb;
+  border-radius: 16px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.no-stores p {
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+}
+
+.no-stores p:last-of-type {
+  color: #9ca3af;
+  font-size: 0.9rem;
+  margin-bottom: 2rem;
 }
 
 .store-info {

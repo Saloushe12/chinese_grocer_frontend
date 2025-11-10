@@ -1,14 +1,19 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStoreStore } from '@/stores/store'
 import { useUserStore } from '@/stores/user'
+import { useNotificationStore } from '@/stores/notification'
 
 const router = useRouter()
 
 // Store instances
 const storeStore = useStoreStore()
 const userStore = useUserStore()
+const notificationStore = useNotificationStore()
+
+// Computed properties
+const currentUserId = computed(() => userStore.userId)
 
 // Form data
 const newStore = ref({
@@ -30,9 +35,9 @@ const loginData = ref({
 // Methods
 const createStore = async () => {
   if (newStore.value.name && newStore.value.address) {
-    const storeId = await storeStore.createStore(newStore.value)
+    const storeId = await storeStore.createStore(newStore.value, currentUserId.value)
     if (storeId) {
-      alert(`Store created successfully! ID: ${storeId}`)
+      notificationStore.success('Store created successfully!')
       newStore.value = { name: '', address: '' }
     }
   }
@@ -46,7 +51,7 @@ const registerUser = async () => {
       newUser.value.password
     )
     if (success) {
-      alert('User registered and logged in successfully!')
+      notificationStore.success('User registered and logged in successfully!')
       newUser.value = { username: '', email: '', password: '' }
     }
   }
@@ -59,7 +64,7 @@ const loginUser = async () => {
       loginData.value.password
     )
     if (success) {
-      alert('Login successful! Redirecting to your dashboard...')
+      notificationStore.success('Login successful! Redirecting to your dashboard...')
       loginData.value = { usernameOrEmail: '', password: '' }
       router.push('/my-account')
     }
@@ -68,7 +73,7 @@ const loginUser = async () => {
 
 const logout = () => {
   userStore.logout()
-  alert('Logged out successfully!')
+  notificationStore.success('Logged out successfully!')
 }
 
 onMounted(async () => {

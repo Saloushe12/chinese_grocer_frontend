@@ -23,19 +23,17 @@ export interface CreateStoreRequest {
   name: string
   address: string
   description?: string
-  tags?: string[]
   phone?: string
   hours?: string
+  specialties?: string[]
+  image?: string
 }
 
 export interface CreateStoreResponse {
   storeId: string
 }
 
-export interface GetStoreResponse {
-  name: string
-  address: string
-}
+// Removed - using Store directly now
 
 export interface GetStoresByNameRequest {
   name: string
@@ -45,15 +43,7 @@ export interface GetStoresByAddressRequest {
   address: string
 }
 
-export interface StoreListResponse {
-  items: Store[]
-}
-
-export interface StoreDetailResponse extends Store {}
-
-export interface StoreIdResponse {
-  storeId: string
-}
+// StoreListResponse and StoreDetailResponse removed - using Store[] directly now
 
 // User Types
 export interface User {
@@ -76,6 +66,12 @@ export interface AuthenticateUserRequest {
 
 export interface UserResponse {
   userId: string
+}
+
+export interface GetUserDetailsResponse {
+  username: string
+  email: string
+  creationDate: string | Date
 }
 
 export interface UpdateUserEmailRequest {
@@ -113,13 +109,7 @@ export interface GetReviewsByUserRequest {
   userId: string
 }
 
-export interface ReviewsResponse {
-  reviewIds: string[]
-}
-
-export interface ReviewListResponse {
-  items: Review[]
-}
+// ReviewsResponse and ReviewListResponse removed - using Review[] directly now
 
 export interface ReviewWithTimestamp extends Review {
   createdAt?: string
@@ -162,6 +152,9 @@ export interface GetTagsForStoreRequest {
   storeId: string
 }
 
-export interface TagsForStoreResponse {
-  tags: string[]
+// TagsForStoreResponse removed - using string[] directly now
+
+export interface GetStoresByTagResponse {
+  results: Store[]
+  error?: string
 }

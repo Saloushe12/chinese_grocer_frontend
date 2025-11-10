@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { RouterLink, RouterView } from 'vue-router'
+import NotificationToast from '@/components/NotificationToast.vue'
 </script>
 
 <template>
@@ -23,6 +24,9 @@ import { RouterLink, RouterView } from 'vue-router'
     <main class="main-content">
       <RouterView />
     </main>
+
+    <!-- Global Notification Toast -->
+    <NotificationToast />
   </div>
 </template>
 

@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useStoreStore } from '@/stores/store'
 import { useReviewStore } from '@/stores/review'
 import { useRatingStore } from '@/stores/rating'
 import { useTaggingStore } from '@/stores/tagging'
 import { useUserStore } from '@/stores/user'
+import { useNotificationStore } from '@/stores/notification'
+import { getStoreImageByStoreId, CHINESE_GROCERY_STORE_IMAGES } from '@/utils/storeImages'
 import type { Store, Review, Rating, CreateReviewRequest } from '@/types/api'
 
 // Router and stores
@@ -16,6 +18,7 @@ const reviewStore = useReviewStore()
 const ratingStore = useRatingStore()
 const taggingStore = useTaggingStore()
 const userStore = useUserStore()
+const notificationStore = useNotificationStore()
 
 // State
 const store = ref<Store | null>(null)
@@ -23,6 +26,9 @@ const reviews = ref<Review[]>([])
 const rating = ref<Rating | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
+
+// Map to store usernames for each userId
+const usernames = ref<{ [userId: string]: string }>({})
 
 // Review creation state
 const showReviewForm = ref(false)
@@ -50,15 +56,49 @@ const currentUserId = computed(() => userStore.userId)
 // Store ID from route params
 const storeId = computed(() => route.params.id as string)
 
-// Sample images for demonstration
-const storeImages = ref([
-  'https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800&h=600&fit=crop&crop=center',
-  'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=800&h=600&fit=crop&crop=center',
-  'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=800&h=600&fit=crop&crop=center',
-  'https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&h=600&fit=crop&crop=center'
-])
-
+// Use utility function for consistent store images
+const storeImages = ref<string[]>([])
 const currentImageIndex = ref(0)
+
+// Computed property for main image - always shows the selected thumbnail
+const mainImageUrl = computed(() => {
+  if (storeImages.value.length === 0) {
+    return store.value ? getStoreImageByStoreId(store.value.storeId) : CHINESE_GROCERY_STORE_IMAGES[0]
+  }
+  return storeImages.value[currentImageIndex.value] || storeImages.value[0]
+})
+
+// Handle image load errors
+const onImageError = (event: Event) => {
+  const img = event.target as HTMLImageElement
+  // Fallback to utility function image if image fails to load
+  if (store.value) {
+    const fallbackImage = getStoreImageByStoreId(store.value.storeId)
+    if (img.src !== fallbackImage) {
+      img.src = fallbackImage
+    }
+  }
+}
+
+// Initialize images for this specific store only
+watch(() => store.value, (newStore) => {
+  if (newStore) {
+    const images: string[] = []
+    
+    // If store has a valid image, use it as the only image
+    if (newStore.image && newStore.image.trim() !== '') {
+      images.push(newStore.image)
+    } else {
+      // Otherwise, use the utility function to get a consistent image based on storeId
+      // Each store gets ONE consistent image based on its storeId
+      images.push(getStoreImageByStoreId(newStore.storeId))
+    }
+    
+    // Only use the store's own image(s) - don't add gallery images
+    storeImages.value = images
+    currentImageIndex.value = 0
+  }
+}, { immediate: true })
 
 // Methods
 const loadStoreDetails = async () => {
@@ -94,129 +134,109 @@ const loadStoreDetails = async () => {
   }
 }
 
-const getDefaultStore = (id: string): Store | null => {
-  const defaultStores = [
-    {
-      storeId: '1',
-      name: 'Kam Man Food',
-      address: '219 Quincy Ave, Quincy, MA 02169',
-      description: 'Large Asian supermarket with extensive selection of Chinese groceries, fresh seafood, and live fish tanks. Known for their fresh produce and authentic Chinese ingredients.',
-      phone: '(617) 328-8888',
-      hours: '9:00 AM - 9:00 PM',
-      tags: ['Fresh Seafood', 'Live Fish', 'Asian Vegetables', 'Authentic Chinese'],
-      specialties: ['Fresh Seafood', 'Live Fish', 'Asian Vegetables'],
-      rating: 4.5,
-      reviewCount: 127,
-      image: 'https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800&h=600&fit=crop&crop=center'
-    },
-    {
-      storeId: '2',
-      name: 'Super 88 Market',
-      address: '1095 Commonwealth Ave, Boston, MA 02215',
-      description: 'Popular Asian grocery chain with fresh bakery, hot food counter, and wide variety of frozen Asian foods. Great for quick meals and specialty items.',
-      phone: '(617) 254-8888',
-      hours: '8:00 AM - 10:00 PM',
-      tags: ['Bakery', 'Hot Food', 'Frozen Foods', 'Quick Meals'],
-      specialties: ['Bakery', 'Hot Food', 'Frozen Foods'],
-      rating: 4.2,
-      reviewCount: 89,
-      image: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=800&h=600&fit=crop&crop=center'
-    },
-    {
-      storeId: '3',
-      name: 'C-Mart',
-      address: '692 Washington St, Boston, MA 02111',
-      description: 'Traditional Chinese grocery store specializing in Chinese medicine, premium teas, and authentic spices. A hidden gem for traditional Chinese ingredients.',
-      phone: '(617) 426-8888',
-      hours: '9:00 AM - 8:00 PM',
-      tags: ['Chinese Medicine', 'Tea', 'Spices', 'Traditional'],
-      specialties: ['Chinese Medicine', 'Tea', 'Spices'],
-      rating: 4.3,
-      reviewCount: 156,
-      image: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=800&h=600&fit=crop&crop=center'
-    },
-    {
-      storeId: '4',
-      name: 'Great Wall Supermarket',
-      address: '1 Brighton Ave, Allston, MA 02134',
-      description: 'Well-stocked supermarket with fresh produce, quality meat selection, and Asian dairy products. Known for their wide variety and competitive prices.',
-      phone: '(617) 254-8888',
-      hours: '8:30 AM - 9:30 PM',
-      tags: ['Fresh Produce', 'Meat', 'Dairy', 'Competitive Prices'],
-      specialties: ['Fresh Produce', 'Meat', 'Dairy'],
-      rating: 4.4,
-      reviewCount: 203,
-      image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&h=600&fit=crop&crop=center'
-    },
-    {
-      storeId: '5',
-      name: 'H-Mart',
-      address: '581 Massachusetts Ave, Cambridge, MA 02139',
-      description: 'Korean-owned chain with excellent selection of Korean-Chinese products, prepared foods, and household essentials. Modern and clean shopping experience.',
-      phone: '(617) 876-8888',
-      hours: '8:00 AM - 10:00 PM',
-      tags: ['Korean-Chinese', 'Prepared Foods', 'Household Items', 'Modern'],
-      specialties: ['Korean-Chinese', 'Prepared Foods', 'Household Items'],
-      rating: 4.6,
-      reviewCount: 312,
-      image: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=800&h=600&fit=crop&crop=center'
-    },
-    {
-      storeId: '6',
-      name: 'Ranch 99',
-      address: '99 Middlesex Turnpike, Burlington, MA 01803',
-      description: 'Large format store with bulk items, extensive snack selection, and Asian beverages. Perfect for stocking up on essentials.',
-      phone: '(781) 272-8888',
-      hours: '9:00 AM - 9:00 PM',
-      tags: ['Bulk Items', 'Snacks', 'Beverages', 'Essentials'],
-      specialties: ['Bulk Items', 'Snacks', 'Beverages'],
-      rating: 4.1,
-      reviewCount: 98,
-      image: 'https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800&h=600&fit=crop&crop=center'
-    }
-  ]
-  
-  return defaultStores.find(s => s.storeId === id) || null
-}
 
 const loadReviews = async () => {
   if (!storeId.value) return
   
   try {
-    // Use new endpoint that returns full review objects
+    // Always fetch from backend - this is the single source of truth
     reviews.value = await reviewStore.listReviewsForStore(storeId.value)
+    
+    // Fetch usernames for all unique user IDs in reviews
+    await loadUsernamesForReviews(reviews.value)
   } catch (err) {
     console.error('Failed to load reviews:', err)
-    reviews.value = []
+    // On error, use cached data from store as fallback, but still show error
+    if (reviewStore.storeReviews[storeId.value]) {
+      reviews.value = reviewStore.storeReviews[storeId.value]
+      await loadUsernamesForReviews(reviews.value)
+    } else {
+      reviews.value = []
+    }
   }
+}
+
+// Fetch usernames for all reviews (works for all reviews, including old ones)
+const loadUsernamesForReviews = async (reviewList: Review[]) => {
+  if (!reviewList || reviewList.length === 0) {
+    return
+  }
+  
+  // Get unique user IDs from reviews (handles all reviews, regardless of when created)
+  const uniqueUserIds = [...new Set(reviewList.map(r => r.userId).filter(id => id))]
+  
+  if (uniqueUserIds.length === 0) {
+    return
+  }
+  
+  // Fetch usernames for each user ID (using cache when available)
+  // This works for any userId, including ones from old reviews
+  await Promise.all(
+    uniqueUserIds.map(async (userId) => {
+      // Skip if userId is invalid
+      if (!userId || userId.trim() === '') {
+        return
+      }
+      
+      // Check if we already have the username cached
+      if (usernames.value[userId]) {
+        return
+      }
+      
+      try {
+        // fetchUserProfile works for any userId, regardless of when the review was created
+        // It will fetch from backend if not in cache, handling old reviews correctly
+        const user = await userStore.fetchUserProfile(userId, false)
+        if (user && user.username) {
+          usernames.value[userId] = user.username
+        } else {
+          // Fallback to "User" + last character of userId if fetch fails
+          usernames.value[userId] = `User ${userId.slice(-1)}`
+        }
+      } catch (err) {
+        console.error(`Failed to fetch username for userId ${userId}:`, err)
+        // Fallback to "User" + last character of userId
+        // This ensures old reviews still display something even if user lookup fails
+        usernames.value[userId] = `User ${userId.slice(-1)}`
+      }
+    })
+  )
+}
+
+// Get username for a userId, with fallback
+const getUsername = (userId: string): string => {
+  return usernames.value[userId] || `User ${userId.slice(-1)}`
 }
 
 const loadRating = async () => {
   if (!storeId.value) return
   
   try {
-    const ratingData = await ratingStore.getRating({ storeId: storeId.value })
-    rating.value = ratingData
+    // Always fetch from backend - this is the single source of truth
+    const ratingData = await ratingStore.getRating(storeId.value)
+    rating.value = ratingData || { aggregatedRating: 0, reviewCount: 0 }
   } catch (err) {
-    // Use store's default rating if API fails
-    if (store.value) {
-      rating.value = {
-        aggregatedRating: store.value.rating || 0,
-        reviewCount: store.value.reviewCount || 0
-      }
-    }
+    console.error('Failed to load rating:', err)
+    // Default to zero rating on error
+    rating.value = { aggregatedRating: 0, reviewCount: 0 }
   }
 }
 
 
 const nextImage = () => {
-  currentImageIndex.value = (currentImageIndex.value + 1) % storeImages.value.length
+  // Only allow navigation if there are multiple images
+  if (storeImages.value.length > 1) {
+    currentImageIndex.value = (currentImageIndex.value + 1) % storeImages.value.length
+  }
 }
 
 const prevImage = () => {
-  currentImageIndex.value = currentImageIndex.value === 0 
-    ? storeImages.value.length - 1 
-    : currentImageIndex.value - 1
+  // Only allow navigation if there are multiple images
+  if (storeImages.value.length > 1) {
+    currentImageIndex.value = currentImageIndex.value === 0 
+      ? storeImages.value.length - 1 
+      : currentImageIndex.value - 1
+  }
 }
 
 const goBack = () => {
@@ -224,7 +244,19 @@ const goBack = () => {
 }
 
 const createReview = async () => {
-  if (!currentUserId.value || !storeId.value || !newReviewText.value.trim()) {
+  // Always check auth status before creating review - single source of truth
+  await userStore.checkAuthStatus()
+  
+  if (!isLoggedIn.value || !currentUserId.value) {
+    notificationStore.warning('You need to be logged in to create a review. Please log in first.')
+    showReviewForm.value = false
+    setTimeout(() => {
+      router.push('/my-account')
+    }, 2000)
+    return
+  }
+  
+  if (!storeId.value || !newReviewText.value.trim()) {
     error.value = 'Please fill in all required fields'
     return
   }
@@ -244,23 +276,14 @@ const createReview = async () => {
     const reviewId = await reviewStore.createReview(reviewData)
     
     if (reviewId) {
-      // Add to local reviews list at the beginning (newest first)
-      const newReview: Review = {
-        reviewId,
-        userId: currentUserId.value,
-        storeId: storeId.value,
-        text: newReviewText.value.trim(),
-        rating: newReviewRating.value,
-        tags: newReviewTags.value.length > 0 ? newReviewTags.value : undefined
-      }
-      // Unshift adds to the beginning, ensuring new reviews appear first
-      reviews.value.unshift(newReview)
+      notificationStore.success('Review created successfully!')
+      
+      // Reload reviews from backend to ensure we have the latest data
+      // The review store already updated its state, but we refresh to be sure
+      await loadReviews()
       
       // Update rating with new review
       await loadRating()
-      
-      // Reload user reviews in My Account page by emitting event or calling loadUserData
-      // Since we're on the store detail page, we don't need to do anything here
       
       // Reset form
       newReviewText.value = ''
@@ -270,7 +293,19 @@ const createReview = async () => {
       showReviewForm.value = false
     }
   } catch (err: any) {
-    error.value = err.message || 'Failed to create review'
+    // Handle sync-based errors (e.g., user validation, store validation)
+    const errorMessage = err.response?.data?.error || err.message || 'Failed to create review'
+    error.value = errorMessage
+    notificationStore.error(errorMessage)
+    
+    // If user validation fails, suggest logging in
+    if (errorMessage.toLowerCase().includes('user') || errorMessage.toLowerCase().includes('login') || errorMessage.toLowerCase().includes('authenticated')) {
+      notificationStore.warning('You need to be logged in to create a review. Please log in first.')
+      showReviewForm.value = false
+      setTimeout(() => {
+        router.push('/my-account')
+      }, 2000)
+    }
   } finally {
     creatingReview.value = false
   }
@@ -278,6 +313,19 @@ const createReview = async () => {
 
 const goToLogin = () => {
   router.push('/my-account')
+}
+
+const openReviewForm = async () => {
+  // Always check auth status before opening review form - single source of truth
+  await userStore.checkAuthStatus()
+  
+  if (!isLoggedIn.value || !currentUserId.value) {
+    notificationStore.warning('You need to be logged in to create a review. Please log in first.')
+    router.push('/my-account')
+    return
+  }
+  
+  showReviewForm.value = true
 }
 
 // Tag management methods
@@ -320,15 +368,80 @@ const clearTagInput = () => {
   showTagSuggestions.value = false
 }
 
-// Lifecycle
-onMounted(() => {
-  userStore.checkAuthStatus()
-  
-  // Load persisted reviews first (from localStorage)
-  if (storeId.value && reviewStore.storeReviews[storeId.value]) {
-    reviews.value = reviewStore.storeReviews[storeId.value]
+// Watch for storeId changes to reload data
+watch(() => storeId.value, async (newStoreId) => {
+  if (newStoreId) {
+    await loadStoreDetails()
   }
-  
+})
+
+// Watch for review store changes to update reviews in real-time
+watch(() => reviewStore.storeReviews[storeId.value || ''], async (newReviews) => {
+  if (newReviews && storeId.value && Array.isArray(newReviews)) {
+    reviews.value = newReviews
+    // Reload usernames when reviews change (handles new reviews or updates)
+    await loadUsernamesForReviews(newReviews)
+  }
+}, { deep: true })
+
+// Watch for rating changes in the rating store
+watch(() => storeId.value, async (newStoreId) => {
+  if (newStoreId) {
+    await loadRating()
+  }
+})
+
+watch(() => ratingStore.ratings[storeId.value || ''], (newRating) => {
+  if (newRating && storeId.value) {
+    rating.value = newRating
+  }
+}, { deep: true })
+
+// Watch for store changes in the store store
+watch(() => storeStore.stores.find(s => s.storeId === storeId.value), (newStore) => {
+  if (newStore && storeId.value) {
+    store.value = newStore
+    // Reload tags when store changes
+    if (newStore.storeId) {
+      taggingStore.listTagsForStore(newStore.storeId).then(tags => {
+        if (store.value) {
+          store.value.tags = tags
+        }
+      })
+    }
+  }
+}, { deep: true })
+
+// Watch for authentication state changes to update UI in real-time
+// This ensures buttons and forms update immediately when user logs in/out
+// Using immediate: true to ensure we get the current state on mount
+watch(() => userStore.isAuthenticated, (newAuthState, oldAuthState) => {
+  // Close review form if user logs out
+  if (!newAuthState && showReviewForm.value) {
+    showReviewForm.value = false
+  }
+  // The isLoggedIn computed property will automatically update the UI
+  // Force reactivity by triggering a small delay to ensure Vue updates
+  if (newAuthState !== oldAuthState) {
+    // Auth state changed - UI will update automatically via computed property
+  }
+}, { immediate: true })
+
+// Watch for currentUserId changes to update UI
+watch(() => userStore.userId, (newUserId, oldUserId) => {
+  // If user logs out, close review form
+  if (!newUserId && showReviewForm.value) {
+    showReviewForm.value = false
+  }
+  // The isLoggedIn computed property will automatically update the UI
+}, { immediate: true })
+
+// Lifecycle
+onMounted(async () => {
+  // Check auth status on mount - this is the single source of truth
+  // The router guard should have already checked, but we verify here too
+  await userStore.checkAuthStatus()
+  // Always load from backend - this is the single source of truth
   loadStoreDetails()
 })
 </script>
@@ -361,13 +474,19 @@ onMounted(() => {
       <section class="store-hero">
         <div class="store-images">
           <div class="main-image">
-            <img :src="store.image || storeImages[currentImageIndex]" :alt="store.name" />
-            <div class="image-nav">
+            <img 
+              :src="mainImageUrl" 
+              :alt="store.name" 
+              @error="onImageError"
+            />
+            <!-- Only show navigation buttons if there are multiple images -->
+            <div v-if="storeImages.length > 1" class="image-nav">
               <button class="nav-btn prev" @click="prevImage">‹</button>
               <button class="nav-btn next" @click="nextImage">›</button>
             </div>
           </div>
-          <div class="thumbnail-images">
+          <!-- Only show thumbnails if there are multiple images -->
+          <div v-if="storeImages.length > 1" class="thumbnail-images">
             <img 
               v-for="(image, index) in storeImages" 
               :key="index"
@@ -428,16 +547,19 @@ onMounted(() => {
           <div v-if="!showReviewForm">
             <button 
               v-if="isLoggedIn"
+              type="button"
               class="btn-add-review"
-              @click="showReviewForm = true"
+              @click="openReviewForm"
             >
               + Add Review
             </button>
             <button 
               v-else
+              type="button"
               class="btn-add-review btn-disabled"
               @click="goToLogin"
               title="Login to add a review"
+              :disabled="true"
             >
               🔒 Login to Add Review
             </button>
@@ -452,7 +574,7 @@ onMounted(() => {
         </div>
 
         <!-- Review Form -->
-        <div v-if="showReviewForm" class="review-form-container">
+        <div v-if="showReviewForm && isLoggedIn" class="review-form-container">
           <h3>Write Your Review</h3>
           
           <div class="form-group">
@@ -585,7 +707,7 @@ onMounted(() => {
           <div v-for="review in reviews" :key="review.reviewId" class="review-card">
             <div class="review-header">
               <div class="reviewer-info">
-                <h4>User {{ review.userId.slice(-1) }}</h4>
+                <h4>{{ getUsername(review.userId) }}</h4>
                 <div class="review-rating">
                   <span v-for="i in 5" :key="i" :class="{ filled: i <= review.rating }">
                     ⭐
@@ -683,12 +805,18 @@ onMounted(() => {
   gap: 3rem;
   margin-bottom: 3rem;
   align-items: start;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .store-images {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .main-image {
@@ -696,10 +824,13 @@ onMounted(() => {
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 100%;
 }
 
 .main-image img {
   width: 100%;
+  max-width: 100%;
   height: 400px;
   object-fit: cover;
   display: block;
@@ -739,17 +870,22 @@ onMounted(() => {
   gap: 0.5rem;
   overflow-x: auto;
   padding: 0.5rem 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .thumbnail-images img {
   width: 80px;
   height: 60px;
+  min-width: 80px;
   object-fit: cover;
   border-radius: 8px;
   cursor: pointer;
   opacity: 0.7;
   transition: all 0.3s ease;
   border: 2px solid transparent;
+  flex-shrink: 0;
 }
 
 .thumbnail-images img:hover,

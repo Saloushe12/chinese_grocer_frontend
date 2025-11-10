@@ -3,12 +3,14 @@ import { ref, onMounted, computed } from 'vue'
 import { useUserStore } from '@/stores/user'
 import { useReviewStore } from '@/stores/review'
 import { useStoreStore } from '@/stores/store'
+import { useNotificationStore } from '@/stores/notification'
 import type { Review, CreateReviewRequest } from '@/types/api'
 
 // Store instances
 const userStore = useUserStore()
 const reviewStore = useReviewStore()
 const storeStore = useStoreStore()
+const notificationStore = useNotificationStore()
 
 // State
 const userReviews = ref<Review[]>([])
@@ -121,9 +123,29 @@ const createReview = async () => {
   }
 }
 
-const deleteReview = async (reviewId: string) => {
-  if (!confirm('Are you sure you want to delete this review?')) return
-  
+// Confirmation state for delete review
+const showDeleteConfirm = ref(false)
+const reviewToDelete = ref<string | null>(null)
+
+const confirmDeleteReview = () => {
+  if (reviewToDelete.value) {
+    performDeleteReview(reviewToDelete.value)
+    showDeleteConfirm.value = false
+    reviewToDelete.value = null
+  }
+}
+
+const cancelDeleteReview = () => {
+  showDeleteConfirm.value = false
+  reviewToDelete.value = null
+}
+
+const requestDeleteReview = (reviewId: string) => {
+  reviewToDelete.value = reviewId
+  showDeleteConfirm.value = true
+}
+
+const performDeleteReview = async (reviewId: string) => {
   try {
     loading.value = true
     error.value = null
@@ -136,9 +158,15 @@ const deleteReview = async (reviewId: string) => {
       if (index > -1) {
         userReviews.value.splice(index, 1)
       }
+      notificationStore.success('Review deleted successfully')
+    } else {
+      if (reviewStore.error) {
+        error.value = reviewStore.error
+      }
     }
   } catch (err: any) {
     error.value = err.message || 'Failed to delete review'
+    notificationStore.error(err.message || 'Failed to delete review')
   } finally {
     loading.value = false
   }
@@ -172,10 +200,10 @@ const createStore = async () => {
     loading.value = true
     error.value = null
     
-    const storeId = await storeStore.createStore(newStore.value)
+    const storeId = await storeStore.createStore(newStore.value, currentUserId.value)
     
     if (storeId) {
-      alert(`Store created successfully! ID: ${storeId}`)
+      notificationStore.success('Store created successfully!')
       newStore.value = { name: '', address: '' }
       showCreateStoreForm.value = false
       // Reload user stores after creating a new one
@@ -494,7 +522,7 @@ onMounted(async () => {
               <div class="review-actions">
                 <button 
                   class="btn-delete" 
-                  @click="deleteReview(review.reviewId)"
+                  @click="requestDeleteReview(review.reviewId)"
                   :disabled="loading"
                 >
                   Delete Review
@@ -505,6 +533,18 @@ onMounted(async () => {
         </div>
       </div>
     </section>
+
+    <!-- Delete Confirmation Dialog -->
+    <div v-if="showDeleteConfirm" class="confirmation-overlay" @click.self="cancelDeleteReview">
+      <div class="confirmation-dialog">
+        <h3>Confirm Deletion</h3>
+        <p>Are you sure you want to delete this review? This action cannot be undone.</p>
+        <div class="confirmation-actions">
+          <button class="btn-confirm" @click="confirmDeleteReview">Delete</button>
+          <button class="btn-cancel" @click="cancelDeleteReview">Cancel</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -961,5 +1001,80 @@ onMounted(async () => {
   .dashboard-content {
     padding: 3rem 2rem;
   }
+}
+
+/* Confirmation Dialog */
+.confirmation-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.confirmation-dialog {
+  background: white;
+  border-radius: 12px;
+  padding: 2rem;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.confirmation-dialog h3 {
+  margin: 0 0 1rem 0;
+  color: #dc2626;
+  font-size: 1.5rem;
+}
+
+.confirmation-dialog p {
+  margin: 0 0 1.5rem 0;
+  color: #374151;
+  line-height: 1.6;
+}
+
+.confirmation-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+}
+
+.btn-confirm {
+  background: #dc2626;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-confirm:hover {
+  background: #b91c1c;
+  transform: translateY(-2px);
+}
+
+.btn-cancel {
+  background: #f3f4f6;
+  color: #374151;
+  border: 2px solid #e5e7eb;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-cancel:hover {
+  background: #e5e7eb;
+  border-color: #d1d5db;
 }
 </style>

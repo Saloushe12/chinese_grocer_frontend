@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useStoreStore } from '@/stores/store'
 import { useRatingStore } from '@/stores/rating'
 import { useTaggingStore } from '@/stores/tagging'
@@ -40,16 +40,38 @@ const locationMethod = ref<'browser' | 'manual' | null>(null)
 const maxDistanceKm = ref<number>(50) // Show stores within 50km by default
 const geocodingInProgress = ref(false)
 
-const categories = ref([
-  { id: 'all', name: 'All Stores' },
-  { id: 'fresh', name: 'Fresh Seafood' },
-  { id: 'bakery', name: 'Bakery & Hot Food' },
-  { id: 'traditional', name: 'Traditional Chinese' },
-  { id: 'supermarket', name: 'Supermarket' },
-  { id: 'specialty', name: 'Specialty Items' }
-])
+// Get all unique tags from all stores (user-made tags)
+const availableTags = computed(() => {
+  const allTags = new Set<string>()
+  
+  // Collect all tags from all stores
+  stores.value.forEach(store => {
+    if (store.tags && Array.isArray(store.tags)) {
+      store.tags.forEach(tag => {
+        if (tag && tag.trim() !== '') {
+          allTags.add(tag.trim())
+        }
+      })
+    }
+  })
+  
+  // Convert to sorted array for consistent display
+  return Array.from(allTags).sort()
+})
 
-const selectedCategory = ref('all')
+// Create filter options: "All Stores" + all unique tags
+const filterOptions = computed(() => {
+  const options = [{ id: 'all', name: 'All Stores' }]
+  
+  // Add each unique tag as a filter option
+  availableTags.value.forEach(tag => {
+    options.push({ id: tag, name: tag })
+  })
+  
+  return options
+})
+
+const selectedTag = ref('all')
 const searchQuery = ref('')
 
 // Methods
@@ -235,18 +257,15 @@ const loadStores = async () => {
 const filteredStores = computed(() => {
   let filtered = stores.value
 
-  if (selectedCategory.value !== 'all') {
+  // Filter by selected tag (user-made tags only)
+  if (selectedTag.value !== 'all') {
     filtered = filtered.filter(store => {
-      const specialties = (store.specialties || []).join(' ').toLowerCase()
-      const tags = (store.tags || []).join(' ').toLowerCase()
-      const description = (store.description || '').toLowerCase()
-      
-      return specialties.includes(selectedCategory.value) || 
-             tags.includes(selectedCategory.value) ||
-             description.includes(selectedCategory.value)
+      // Check if store has the selected tag
+      return store.tags && store.tags.includes(selectedTag.value)
     })
   }
 
+  // Filter by search query
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
     filtered = filtered.filter(store => 
@@ -261,8 +280,55 @@ const filteredStores = computed(() => {
   return filtered
 })
 
+// Watch for store count changes to update stores in real-time
+// Use length to avoid triggering on every deep change
+const lastStoreCount = ref(0)
+watch(() => storeStore.stores.length, (newCount) => {
+  if (newCount !== lastStoreCount.value && !loading.value) {
+    lastStoreCount.value = newCount
+    // Debounce to avoid excessive calls
+    setTimeout(() => {
+      loadStores()
+    }, 300)
+  }
+})
+
+// Watch for tag changes in the tagging store to update tags in real-time
+watch(() => taggingStore.storeTags, async (newStoreTags) => {
+  // Update tags for each store in the stores array
+  stores.value.forEach(store => {
+    const storeTags = newStoreTags[store.storeId]
+    if (storeTags && Array.isArray(storeTags)) {
+      // Update tags for this store
+      store.tags = [...storeTags]
+    } else {
+      // If tags were removed or not found, refresh from backend
+      // This ensures we have the latest tags after review creation
+      if (store.storeId) {
+        taggingStore.listTagsForStore(store.storeId).then(tags => {
+          const storeToUpdate = stores.value.find(s => s.storeId === store.storeId)
+          if (storeToUpdate) {
+            storeToUpdate.tags = tags
+          }
+        }).catch(() => {
+          // If fetch fails, set to empty array
+          const storeToUpdate = stores.value.find(s => s.storeId === store.storeId)
+          if (storeToUpdate) {
+            storeToUpdate.tags = []
+          }
+        })
+      } else {
+        store.tags = []
+      }
+    }
+  })
+}, { deep: true })
+
 // Lifecycle
 onMounted(() => {
+  // Initialize lastStoreCount
+  lastStoreCount.value = storeStore.stores.length
+  
   // Check if location is saved in localStorage
   const savedLocation = localStorage.getItem('userLocation')
   const savedCoordinates = localStorage.getItem('userCoordinates')
@@ -367,12 +433,12 @@ onMounted(() => {
           
           <div class="category-filters">
             <button 
-              v-for="category in categories" 
-              :key="category.id"
-              @click="selectedCategory = category.id"
-              :class="['category-btn', { active: selectedCategory === category.id }]"
+              v-for="option in filterOptions" 
+              :key="option.id"
+              @click="selectedTag = option.id"
+              :class="['category-btn', { active: selectedTag === option.id }]"
             >
-              {{ category.name }}
+              {{ option.name }}
             </button>
           </div>
         </div>

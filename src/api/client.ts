@@ -1,32 +1,29 @@
 import axios from 'axios'
 import type { AxiosInstance, AxiosResponse } from 'axios'
+import { STORAGE_KEYS } from '@/utils/storageKeys'
 import type {
   CreateStoreRequest,
   CreateStoreResponse,
   GetStoresByNameRequest,
   GetStoresByAddressRequest,
-  StoreIdResponse,
-  StoreListResponse,
-  StoreDetailResponse,
+  Store,
   RegisterUserRequest,
   AuthenticateUserRequest,
   UserResponse,
-  GetStoreResponse as UserProfileResponse,
+  User,
   UpdateUserEmailRequest,
   CreateReviewRequest,
   CreateReviewResponse,
   GetReviewsForStoreRequest,
   GetReviewsByUserRequest,
-  ReviewsResponse,
-  ReviewListResponse,
+  Review,
   UpdateRatingRequest,
   GetRatingRequest,
   Rating,
   AddTagRequest,
   RemoveTagRequest,
   GetStoresByTagRequest,
-  GetTagsForStoreRequest,
-  TagsForStoreResponse
+  GetTagsForStoreRequest
 } from '@/types/api'
 
 class ApiClient {
@@ -44,9 +41,9 @@ class ApiClient {
     // Request interceptor
     this.client.interceptors.request.use(
       (config) => {
-        // Add auth token if available
-        const token = localStorage.getItem('authToken')
-        if (token) {
+        // Add auth token if available and valid (not dummy-token)
+        const token = localStorage.getItem(STORAGE_KEYS.authToken)
+        if (token && token !== 'dummy-token') {
           config.headers.Authorization = `Bearer ${token}`
         }
         return config
@@ -57,17 +54,40 @@ class ApiClient {
     )
 
     // Response interceptor
+    // Use events instead of direct store import to avoid circular dependencies
+    // and ensure Pinia is initialized before we try to use it
     this.client.interceptors.response.use(
       (response: AxiosResponse) => {
         return response
       },
       (error) => {
         // Handle common errors
-        if (error.response?.status === 401) {
-          // Unauthorized - clear token and redirect to login
-          localStorage.removeItem('authToken')
-          localStorage.removeItem('userId')
-          window.location.href = '/my-account'
+        const status = error.response?.status
+        if (status === 401 || status === 403) {
+          // Only force-logout for endpoints that truly require auth
+          // Public endpoints (like listing stores) shouldn't trigger logout
+          const url: string = error?.config?.url || ''
+          const mustBeAuthed = 
+            url.includes('/User/authenticateUser') ||
+            url.includes('/User/_getUserDetails') ||
+            url.includes('/User/updateUserEmail') ||
+            url.includes('/User/deleteUser') ||
+            url.includes('/Store/createStore') ||
+            url.includes('/Review/createReview') ||
+            url.includes('/Review/deleteReview')
+          
+          if (mustBeAuthed) {
+            // Dispatch event instead of directly calling store
+            // This avoids circular imports and ensures Pinia is ready
+            console.warn('🔴 401/403 on protected endpoint - triggering logout', { url, status, mustBeAuthed })
+            window.dispatchEvent(new CustomEvent('auth:force-logout', { 
+              detail: { url, status } 
+            }))
+          } else {
+            console.log('ℹ️ 401/403 on public endpoint - NOT logging out', { url, status })
+          }
+          // For public endpoints, just let the error propagate
+          // Don't auto-logout on incidental 401s from public endpoints
         }
         return Promise.reject(error)
       }
@@ -80,52 +100,97 @@ class ApiClient {
     return response.data
   }
 
-  async deleteStore(storeId: string): Promise<void> {
-    await this.client.post('/api/Store/deleteStore', { storeId })
-  }
-
-  async listStores(): Promise<StoreListResponse> {
-    const response = await this.client.post('/api/Store/listStores', {})
+  async deleteStore(storeId: string): Promise<{ status: string; storeId: string }> {
+    const response = await this.client.post('/api/Store/deleteStore', { storeId })
     return response.data
   }
 
-  async getStoreById(storeId: string): Promise<StoreDetailResponse> {
-    const response = await this.client.post('/api/Store/getStoreById', { storeId })
-    return response.data
+  async listStores(): Promise<Store[]> {
+    const response = await this.client.post('/api/Store/_listAllStores', {})
+    // Backend returns array directly
+    return Array.isArray(response.data) ? response.data : []
   }
 
-  async getStoresByName(data: GetStoresByNameRequest): Promise<StoreIdResponse[]> {
+  async getStoreById(storeId: string): Promise<Store | null> {
+    const response = await this.client.post('/api/Store/_getStoreDetails', { storeId })
+    // Backend returns array - get first item or null
+    const stores = Array.isArray(response.data) ? response.data : []
+    return stores.length > 0 ? stores[0] : null
+  }
+
+  async getStoresByName(data: GetStoresByNameRequest): Promise<Store[]> {
     const response = await this.client.post('/api/Store/_getStoresByName', data)
-    return response.data
+    // Backend returns array of store objects
+    return Array.isArray(response.data) ? response.data : []
   }
 
-  async getStoresByAddress(data: GetStoresByAddressRequest): Promise<StoreIdResponse[]> {
+  async getStoresByAddress(data: GetStoresByAddressRequest): Promise<Store[]> {
     const response = await this.client.post('/api/Store/_getStoresByAddress', data)
-    return response.data
+    // Backend returns array of store objects
+    return Array.isArray(response.data) ? response.data : []
   }
 
   // User API Methods
   async registerUser(data: RegisterUserRequest): Promise<UserResponse> {
     const response = await this.client.post('/api/User/registerUser', data)
+    console.log('📥 REGISTER RAW RESPONSE:', response)
+    console.log('📥 registerUser response.data:', response.data)
+    console.log('📥 registerUser response.data.userId:', response.data?.userId)
+    
+    // Check for error response
+    if (response.data.error) {
+      throw new Error(response.data.error)
+    }
+    
+    // Validate response structure
+    if (!response.data.userId) {
+      console.error('❌ registerUser: No userId in response', response.data)
+      throw new Error('Invalid response: userId is missing')
+    }
+    
     return response.data
   }
 
   async authenticateUser(data: AuthenticateUserRequest): Promise<UserResponse> {
     const response = await this.client.post('/api/User/authenticateUser', data)
+    console.log('📥 AUTH RAW RESPONSE:', response)
+    console.log('📥 authenticateUser response.data:', response.data)
+    console.log('📥 authenticateUser response.data.userId:', response.data?.userId)
+    
+    // Check for error response
+    if (response.data.error) {
+      throw new Error(response.data.error)
+    }
+    
+    // Validate response structure
+    if (!response.data.userId) {
+      console.error('❌ authenticateUser: No userId in response', response.data)
+      throw new Error('Invalid response: userId is missing')
+    }
+    
     return response.data
   }
 
-  async getUserById(userId: string): Promise<UserProfileResponse> {
-    const response = await this.client.post('/api/User/getUserById', { userId })
-    return response.data
+  async getUserById(userId: string): Promise<User | null> {
+    const response = await this.client.post('/api/User/_getUserDetails', { userId })
+    // Backend returns array - get first item or null
+    const users = Array.isArray(response.data) ? response.data : []
+    if (users.length === 0) return null
+    return {
+      userId,
+      username: users[0].username,
+      email: users[0].email,
+      creationDate: users[0].creationDate
+    }
   }
 
   async updateUserEmail(data: UpdateUserEmailRequest): Promise<void> {
     await this.client.post('/api/User/updateUserEmail', data)
   }
 
-  async deleteUser(userId: string): Promise<void> {
-    await this.client.post('/api/User/deleteUser', { userId })
+  async deleteUser(userId: string): Promise<{ status: string; userId: string }> {
+    const response = await this.client.post('/api/User/deleteUser', { userId })
+    return response.data
   }
 
   // Review API Methods
@@ -134,28 +199,33 @@ class ApiClient {
     return response.data
   }
 
-  async deleteReview(reviewId: string): Promise<void> {
-    await this.client.post('/api/Review/deleteReview', { reviewId })
-  }
-
-  async getReviewsForStore(data: GetReviewsForStoreRequest): Promise<ReviewsResponse> {
-    const response = await this.client.post('/api/Review/getReviewsForStore', data)
+  async deleteReview(reviewId: string): Promise<{ status: string; reviewId: string }> {
+    const response = await this.client.post('/api/Review/deleteReview', { reviewId })
     return response.data
   }
 
-  async listReviewsForStore(data: GetReviewsForStoreRequest): Promise<ReviewListResponse> {
-    const response = await this.client.post('/api/Review/listReviewsForStore', data)
-    return response.data
+  async getReviewsForStore(data: GetReviewsForStoreRequest): Promise<string[]> {
+    // This endpoint is deprecated - use listReviewsForStore instead
+    const reviews = await this.listReviewsForStore(data)
+    return reviews.map(r => r.reviewId)
   }
 
-  async getReviewsByUser(data: GetReviewsByUserRequest): Promise<ReviewsResponse> {
-    const response = await this.client.post('/api/Review/getReviewsByUser', data)
-    return response.data
+  async listReviewsForStore(data: GetReviewsForStoreRequest): Promise<Review[]> {
+    const response = await this.client.post('/api/Review/_getReviewsForStoreFull', data)
+    // Backend returns array of review objects
+    return Array.isArray(response.data) ? response.data : []
   }
 
-  async listReviewsByUser(data: GetReviewsByUserRequest): Promise<ReviewListResponse> {
-    const response = await this.client.post('/api/Review/listReviewsByUser', data)
-    return response.data
+  async getReviewsByUser(data: GetReviewsByUserRequest): Promise<string[]> {
+    // This endpoint is deprecated - use listReviewsByUser instead
+    const reviews = await this.listReviewsByUser(data)
+    return reviews.map(r => r.reviewId)
+  }
+
+  async listReviewsByUser(data: GetReviewsByUserRequest): Promise<Review[]> {
+    const response = await this.client.post('/api/Review/_getReviewsByUserFull', data)
+    // Backend returns array of review objects
+    return Array.isArray(response.data) ? response.data : []
   }
 
   // Rating API Methods
@@ -163,9 +233,17 @@ class ApiClient {
     await this.client.post('/api/Rating/updateRating', data)
   }
 
-  async getRating(data: GetRatingRequest): Promise<Rating> {
-    const response = await this.client.post('/api/Rating/getRating', data)
-    return response.data
+  async getRating(data: GetRatingRequest): Promise<Rating | null> {
+    const response = await this.client.post('/api/Rating/_getRating', data)
+    // Backend returns array - get first item or null
+    const ratings = Array.isArray(response.data) ? response.data : []
+    if (ratings.length === 0) {
+      return { aggregatedRating: 0, reviewCount: 0 }
+    }
+    return {
+      aggregatedRating: ratings[0].aggregatedRating,
+      reviewCount: ratings[0].reviewCount
+    }
   }
 
   // Tagging API Methods
@@ -177,14 +255,21 @@ class ApiClient {
     await this.client.post('/api/Tagging/removeTag', data)
   }
 
-  async getStoresByTag(data: GetStoresByTagRequest): Promise<StoreIdResponse[]> {
-    const response = await this.client.post('/api/Tagging/_getStoresByTag', data)
-    return response.data
+  async getStoresByTag(data: GetStoresByTagRequest): Promise<Store[]> {
+    const response = await this.client.post('/api/Tagging/getStoresByTag', data)
+    // Backend returns { results: Store[], error?: string }
+    if (response.data.error) {
+      throw new Error(response.data.error)
+    }
+    return Array.isArray(response.data.results) ? response.data.results : []
   }
 
-  async listTagsForStore(data: GetTagsForStoreRequest): Promise<TagsForStoreResponse> {
-    const response = await this.client.post('/api/Tagging/listTagsForStore', data)
-    return response.data
+  async listTagsForStore(data: GetTagsForStoreRequest): Promise<string[]> {
+    const response = await this.client.post('/api/Tagging/_getTagsForStore', data)
+    // Backend returns array - get first item or empty array
+    const taggings = Array.isArray(response.data) ? response.data : []
+    if (taggings.length === 0) return []
+    return taggings[0].tags || []
   }
 }
 

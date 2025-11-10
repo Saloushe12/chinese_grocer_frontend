@@ -4,7 +4,11 @@ import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useReviewStore } from '@/stores/review'
 import { useStoreStore } from '@/stores/store'
-import type { Review, CreateReviewRequest } from '@/types/api'
+import { useRatingStore } from '@/stores/rating'
+import { useTaggingStore } from '@/stores/tagging'
+import { useNotificationStore } from '@/stores/notification'
+import { STORAGE_KEYS } from '@/utils/storageKeys'
+import type { Review, CreateReviewRequest, Store } from '@/types/api'
 
 // Router
 const router = useRouter()
@@ -13,10 +17,43 @@ const router = useRouter()
 const userStore = useUserStore()
 const reviewStore = useReviewStore()
 const storeStore = useStoreStore()
+const ratingStore = useRatingStore()
+const taggingStore = useTaggingStore()
+const notificationStore = useNotificationStore()
+
+// User stores display interface
+interface UserStoreDisplay extends Store {
+  id: string
+  rating: number
+  reviewCount: number
+}
 
 // Authentication state
 const showLoginForm = ref(false)
 const showRegisterForm = ref(false)
+
+// Functions to handle form toggling - only one form visible at a time
+const openLoginForm = () => {
+  if (showLoginForm.value) {
+    // If already open, close it
+    showLoginForm.value = false
+  } else {
+    // Open login form and ensure register form is closed
+    showRegisterForm.value = false
+    showLoginForm.value = true
+  }
+}
+
+const openRegisterForm = () => {
+  if (showRegisterForm.value) {
+    // If already open, close it
+    showRegisterForm.value = false
+  } else {
+    // Open register form and ensure login form is closed
+    showLoginForm.value = false
+    showRegisterForm.value = true
+  }
+}
 
 // Registration form data
 const newUser = ref({
@@ -51,7 +88,7 @@ const newStore = ref({
 const newTag = ref('')
 
 // User's created stores
-const userStores = ref<any[]>([])
+const userStores = ref<UserStoreDisplay[]>([])
 const loadingStores = ref(false)
 
 // Computed properties
@@ -63,16 +100,45 @@ const currentUsername = computed(() => userStore.username)
 // Authentication methods
 const registerUser = async () => {
   if (newUser.value.username && newUser.value.email && newUser.value.password) {
-    const success = await userStore.register(
-      newUser.value.username,
-      newUser.value.email,
-      newUser.value.password
-    )
-    if (success) {
-      alert('User registered and logged in successfully!')
-      newUser.value = { username: '', email: '', password: '' }
-      showRegisterForm.value = false
-      await loadUserData()
+    try {
+      // Register user without auto-login
+      const userId = await userStore.registerUser({
+        username: newUser.value.username,
+        email: newUser.value.email,
+        password: newUser.value.password
+      })
+      
+      if (userId) {
+        // Clear any auth state to ensure user is not logged in
+        // (registerUser stores userId but we don't want to auto-login)
+        // Note: Using the same keys that the user store uses internally
+        localStorage.removeItem(STORAGE_KEYS.userId)
+        localStorage.removeItem(STORAGE_KEYS.authToken)
+        userStore.clearUser()
+        
+        // Show success notification
+        notificationStore.success('Account created')
+        
+        // Clear registration form
+        newUser.value = { username: '', email: '', password: '' }
+        
+        // Close registration form and open login form
+        showRegisterForm.value = false
+        showLoginForm.value = true
+        
+        // Clear any errors
+        error.value = null
+      } else {
+        // Error is already set in userStore.error, but display it more prominently
+        if (userStore.error) {
+          error.value = userStore.error
+          notificationStore.error(userStore.error)
+        }
+      }
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.error || err.message || 'Failed to create account'
+      error.value = errorMessage
+      notificationStore.error(errorMessage)
     }
   }
 }
@@ -84,19 +150,27 @@ const loginUser = async () => {
       loginData.value.password
     )
     if (success) {
-      alert('Login successful!')
+      notificationStore.success('Login successful!')
       loginData.value = { usernameOrEmail: '', password: '' }
       showLoginForm.value = false
+      showRegisterForm.value = false
       await loadUserData()
+    } else {
+      // Error is already set in userStore.error, but display it more prominently
+      if (userStore.error) {
+        error.value = userStore.error
+      }
     }
   }
 }
 
 const logout = () => {
   userStore.logout()
-  alert('Logged out successfully!')
+  notificationStore.success('Logged out successfully!')
   userReviews.value = []
   userStores.value = []
+  // Note: We keep the created stores list in localStorage even after logout
+  // so users can see their stores when they log back in
 }
 
 // User dashboard methods
@@ -118,8 +192,29 @@ const loadUserReviews = async () => {
 }
 
 
-const deleteReview = async (reviewId: string) => {
-  if (!confirm('Are you sure you want to delete this review?')) return
+// Confirmation state for delete review
+const showDeleteConfirm = ref(false)
+const reviewToDelete = ref<string | null>(null)
+
+const confirmDeleteReview = () => {
+  if (reviewToDelete.value) {
+    performDeleteReview(reviewToDelete.value)
+    showDeleteConfirm.value = false
+    reviewToDelete.value = null
+  }
+}
+
+const cancelDeleteReview = () => {
+  showDeleteConfirm.value = false
+  reviewToDelete.value = null
+}
+
+const requestDeleteReview = (reviewId: string) => {
+  reviewToDelete.value = reviewId
+  showDeleteConfirm.value = true
+}
+
+const performDeleteReview = async (reviewId: string) => {
   
   try {
     loading.value = true
@@ -128,13 +223,22 @@ const deleteReview = async (reviewId: string) => {
     const success = await reviewStore.deleteReview(reviewId)
     
     if (success) {
-      const index = userReviews.value.findIndex(review => review.reviewId === reviewId)
-      if (index > -1) {
-        userReviews.value.splice(index, 1)
+      // Reload reviews from backend to ensure we have the latest data
+      // The review store already updated its state, but we refresh to be sure
+      await loadUserReviews()
+      // Clear any previous errors
+      error.value = null
+      notificationStore.success('Review deleted successfully')
+    } else {
+      // Handle sync-based errors
+      if (reviewStore.error) {
+        error.value = reviewStore.error
       }
     }
   } catch (err: any) {
-    error.value = err.message || 'Failed to delete review'
+    // Handle sync-based errors (e.g., review not found, permission errors)
+    const errorMessage = err.response?.data?.error || err.message || 'Failed to delete review'
+    error.value = errorMessage
   } finally {
     loading.value = false
   }
@@ -150,17 +254,21 @@ const createStore = async () => {
     loading.value = true
     error.value = null
     
-    const storeId = await storeStore.createStore(newStore.value)
+    // Pass userId to track this store as created by the current user
+    const storeId = await storeStore.createStore(newStore.value, currentUserId.value)
     
     if (storeId) {
-      // Add tags if any
+      // Add tags if any - use taggingStore to ensure local state is updated
       if (newStore.value.tags.length > 0) {
         for (const tag of newStore.value.tags) {
-          await storeStore.addTag({ storeId, tag })
+          await taggingStore.addTag(storeId, tag)
         }
+        // After adding all tags, refresh tags from backend to ensure consistency
+        // This ensures the tagging store has the latest tags
+        await taggingStore.listTagsForStore(storeId)
       }
       
-      alert(`Store created successfully! ID: ${storeId}`)
+      notificationStore.success(`Store created successfully!`)
       newStore.value = { 
         name: '', 
         address: '', 
@@ -170,10 +278,25 @@ const createStore = async () => {
         hours: '' 
       }
       showCreateStoreForm.value = false
-      await loadUserStores()
+      
+      // Clear any previous errors
+      error.value = null
+      
+      // The store is now in storeStore.stores and tracked in userCreatedStores
+      // Force an immediate reload to show the new store with tags
+      // Wait a tiny bit to ensure store store has fully updated
+      await new Promise(resolve => setTimeout(resolve, 50))
+      await loadUserStores(true)
+    } else {
+      // Handle sync-based validation errors
+      if (storeStore.error) {
+        error.value = storeStore.error
+      }
     }
   } catch (err: any) {
-    error.value = err.message || 'Failed to create store'
+    // Handle sync-based errors (e.g., duplicate store, validation errors)
+    const errorMessage = err.response?.data?.error || err.message || 'Failed to create store'
+    error.value = errorMessage
   } finally {
     loading.value = false
   }
@@ -190,14 +313,87 @@ const removeTag = (tagToRemove: string) => {
   newStore.value.tags = newStore.value.tags.filter(tag => tag !== tagToRemove)
 }
 
-const loadUserStores = async () => {
-  if (!currentUserId.value) return
+const loadUserStores = async (skipBackendRefresh = false) => {
+  if (!currentUserId.value) {
+    userStores.value = []
+    return
+  }
   
   try {
     loadingStores.value = true
-    userStores.value = storeStore.stores || []
-  } catch (err) {
+    error.value = null
+    
+    // Get storeIds created by this user from the store store (single source of truth)
+    const userCreatedStoreIds = storeStore.getUserCreatedStoreIds(currentUserId.value)
+    
+    if (userCreatedStoreIds.length === 0) {
+      userStores.value = []
+      loadingStores.value = false
+      return
+    }
+    
+    // Optionally refresh from backend (skip if we just created a store and it's already in local state)
+    if (!skipBackendRefresh) {
+      await storeStore.listStores()
+    }
+    
+    // Get stores created by this user from the store store
+    // This will use the stores currently in the store store (which includes newly created ones)
+    let userCreatedStoresList = storeStore.getUserCreatedStores(currentUserId.value)
+    
+    // If we have storeIds but no stores found, the stores might not be loaded yet
+    // Try to fetch any missing stores
+    if (userCreatedStoreIds.length > 0 && userCreatedStoresList.length < userCreatedStoreIds.length) {
+      const missingStoreIds = userCreatedStoreIds.filter(id => 
+        !userCreatedStoresList.some(store => store.storeId === id)
+      )
+      
+      // Fetch missing stores
+      for (const storeId of missingStoreIds) {
+        try {
+          const store = await storeStore.getStoreById(storeId)
+          if (store) {
+            // Store will be added to storeStore.stores by getStoreById
+          }
+        } catch (e) {
+          // Store might not exist in backend yet, continue
+        }
+      }
+      
+      // Re-fetch the list after loading missing stores
+      userCreatedStoresList = storeStore.getUserCreatedStores(currentUserId.value)
+    }
+    
+    if (userCreatedStoresList.length === 0) {
+      userStores.value = []
+      loadingStores.value = false
+      return
+    }
+    
+    // Fetch ratings and tags for each user-created store
+    const userStoresData = await Promise.all(
+      userCreatedStoresList.map(async (store) => {
+        // Fetch rating
+        const rating = await ratingStore.getRating(store.storeId)
+        
+        // Fetch tags
+        const tags = await taggingStore.listTagsForStore(store.storeId)
+        
+        return {
+          ...store,
+          id: store.storeId,
+          rating: rating?.aggregatedRating || 0,
+          reviewCount: rating?.reviewCount || 0,
+          tags: tags
+        } as UserStoreDisplay
+      })
+    )
+    
+    // Update state with user stores
+    userStores.value = userStoresData
+  } catch (err: any) {
     console.error('Failed to load user stores:', err)
+    error.value = err.message || 'Failed to load your stores'
   } finally {
     loadingStores.value = false
   }
@@ -220,33 +416,91 @@ const goToStore = (storeId: string) => {
 
 const loadUserData = async () => {
   if (isLoggedIn.value) {
+    // Migrate old user stores if they exist (from previous localStorage format)
+    if (currentUserId.value) {
+      storeStore.migrateOldUserStores(currentUserId.value)
+    }
+    
     await loadUserReviews()
     await loadUserStores()
   }
 }
 
-// Watch for review store changes to keep reviews in sync
-watch(() => reviewStore.userReviews, (newUserReviews) => {
-  if (currentUserId.value && newUserReviews[currentUserId.value]) {
-    const reviews = newUserReviews[currentUserId.value]
-    if (reviews && Array.isArray(reviews)) {
-      userReviews.value = reviews
+// Watch for review store changes to keep reviews in sync (real-time updates)
+watch(() => reviewStore.userReviews[currentUserId.value || ''], (newReviews) => {
+  if (currentUserId.value && newReviews && Array.isArray(newReviews)) {
+    userReviews.value = newReviews
+  } else if (!newReviews && currentUserId.value) {
+    // If reviews are removed, clear local state
+    userReviews.value = []
+  }
+}, { deep: true })
+
+// Watch for currentUserId changes to reload reviews
+watch(() => currentUserId.value, async (newUserId) => {
+  if (newUserId && isLoggedIn.value) {
+    // Always fetch from backend when user changes
+    await loadUserReviews()
+  } else {
+    userReviews.value = []
+  }
+})
+
+// Computed property for user's created store IDs - this will be reactive
+const userCreatedStoreIds = computed(() => {
+  if (!currentUserId.value) return []
+  return storeStore.getUserCreatedStoreIds(currentUserId.value)
+})
+
+// Watch for changes to user's created store IDs to update the display
+watch(userCreatedStoreIds, (newIds, oldIds) => {
+  // Only reload if the list actually changed (new store added or removed)
+  if (currentUserId.value && isLoggedIn.value) {
+    const oldIdsSet = new Set(oldIds || [])
+    const newIdsSet = new Set(newIds || [])
+    const hasChanges = newIds.length !== oldIds.length || 
+                      newIds.some(id => !oldIdsSet.has(id)) ||
+                      oldIds.some(id => !newIdsSet.has(id))
+    
+    if (hasChanges) {
+      // Reload user stores when the list of created store IDs changes
+      loadUserStores(true) // Skip backend refresh for immediate updates
     }
   }
 }, { deep: true })
+
+// Debounce timer for store changes
+let storeChangeTimeout: ReturnType<typeof setTimeout> | null = null
+
+// Watch for store count changes - update user stores when new stores are added
+watch(() => storeStore.stores.length, () => {
+  if (currentUserId.value && isLoggedIn.value && userCreatedStoreIds.value.length > 0) {
+    // Clear existing timeout
+    if (storeChangeTimeout) {
+      clearTimeout(storeChangeTimeout)
+    }
+    // Debounce to avoid excessive calls
+    storeChangeTimeout = setTimeout(() => {
+      loadUserStores(true)
+    }, 300)
+  }
+})
 
 // Lifecycle
 onMounted(async () => {
   await userStore.checkAuthStatus()
   
-  // Load persisted reviews first (from localStorage)
-  if (currentUserId.value && reviewStore.userReviews[currentUserId.value]) {
-    const persistedReviews = reviewStore.userReviews[currentUserId.value]
-    if (persistedReviews && Array.isArray(persistedReviews)) {
-      userReviews.value = persistedReviews
-    }
-  }
+  // Debug logging to track auth state
+  console.group('Auth debug after checkAuthStatus')
+  console.log('LS userId:', localStorage.getItem(STORAGE_KEYS.userId))
+  console.log('LS token:', localStorage.getItem(STORAGE_KEYS.authToken))
+  console.log('Store isAuthenticated:', userStore.isAuthenticated)
+  console.log('Store userId:', userStore.userId)
+  console.log('Store currentUser:', userStore.currentUser)
+  console.groupEnd()
   
+  // Always load user data from backend (this is the single source of truth)
+  // Don't use localStorage cached data - always fetch fresh from backend
   await loadUserData()
 })
 </script>
@@ -267,14 +521,16 @@ onMounted(async () => {
           
           <div class="auth-options">
             <button 
+              type="button"
               class="btn-primary" 
-              @click="showLoginForm = !showLoginForm"
+              @click="openLoginForm"
             >
               {{ showLoginForm ? 'Cancel Login' : 'Sign In' }}
             </button>
             <button 
+              type="button"
               class="btn-secondary" 
-              @click="showRegisterForm = !showRegisterForm"
+              @click="openRegisterForm"
             >
               {{ showRegisterForm ? 'Cancel Registration' : 'Create Account' }}
             </button>
@@ -499,17 +755,66 @@ onMounted(async () => {
         </div>
 
         <!-- User's Created Stores -->
-        <div v-if="userStores.length > 0" class="user-stores-section">
-          <h3>Your Added Stores</h3>
+        <div class="user-stores-section">
+          <div class="section-header">
+            <h3>Your Created Stores</h3>
+            <button 
+              v-if="!loadingStores" 
+              class="btn-secondary" 
+              @click="() => loadUserStores()"
+            >
+              Refresh
+            </button>
+          </div>
+          
           <div v-if="loadingStores" class="loading">
             <p>Loading your stores...</p>
           </div>
-          <div v-else class="stores-list">
-            <div v-for="store in userStores" :key="store.storeId" class="store-item">
+          
+          <div v-else-if="userStores.length === 0" class="no-stores">
+            <p>You haven't created any stores yet.</p>
+            <p>Use the "Add Store" form above to add your first Chinese grocery store!</p>
+          </div>
+          
+          <div v-else class="stores-grid">
+            <div 
+              v-for="store in userStores" 
+              :key="store.storeId" 
+              class="store-card"
+            >
+              <div class="store-image">
+                <img 
+                  v-if="store.image" 
+                  :src="store.image" 
+                  :alt="store.name"
+                  @error="(e: any) => { if (e.target) e.target.src = 'https://via.placeholder.com/400x300?text=No+Image' }"
+                />
+                <div v-else class="no-image">No Image</div>
+              </div>
               <div class="store-info">
                 <h4>{{ store.name }}</h4>
                 <p class="store-address">{{ store.address }}</p>
-                <small>Store ID: {{ store.storeId }}</small>
+                <p v-if="store.phone" class="store-phone">{{ store.phone }}</p>
+                <p v-if="store.hours" class="store-hours">{{ store.hours }}</p>
+                <div class="store-rating">
+                  <span class="rating-stars">⭐ {{ store.rating.toFixed(1) }}</span>
+                  <span class="review-count">({{ store.reviewCount }} reviews)</span>
+                </div>
+                <div class="store-specialties">
+                  <span v-for="specialty in store.specialties" :key="specialty" class="specialty-tag">
+                    {{ specialty }}
+                  </span>
+                  <span v-for="tag in store.tags" :key="tag" class="specialty-tag user-tag">
+                    {{ tag }}
+                  </span>
+                </div>
+                <p v-if="store.description" class="store-description">{{ store.description }}</p>
+                <button 
+                  class="view-store-btn" 
+                  @click="goToStore(store.storeId)"
+                >
+                  View Details
+                </button>
               </div>
             </div>
           </div>
@@ -575,7 +880,7 @@ onMounted(async () => {
               <div class="review-actions">
                 <button 
                   class="btn-delete" 
-                  @click="deleteReview(review.reviewId)"
+                  @click="requestDeleteReview(review.reviewId)"
                   :disabled="loading"
                 >
                   Delete Review
@@ -586,6 +891,18 @@ onMounted(async () => {
         </div>
       </div>
     </section>
+
+    <!-- Delete Confirmation Dialog -->
+    <div v-if="showDeleteConfirm" class="confirmation-overlay" @click.self="cancelDeleteReview">
+      <div class="confirmation-dialog">
+        <h3>Confirm Deletion</h3>
+        <p>Are you sure you want to delete this review? This action cannot be undone.</p>
+        <div class="confirmation-actions">
+          <button class="btn-confirm" @click="confirmDeleteReview">Delete</button>
+          <button class="btn-cancel" @click="cancelDeleteReview">Cancel</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -989,40 +1306,175 @@ onMounted(async () => {
   transform: none;
 }
 
-.stores-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+/* Stores Grid (similar to ProductsView) */
+.stores-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 2rem;
+  width: 100%;
+  margin-top: 2rem;
 }
 
-.store-item {
-  background: #f9fafb;
-  padding: 1.5rem;
-  border-radius: 12px;
-  border: 1px solid #e5e7eb;
+.store-card {
+  background: white;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
   transition: all 0.3s ease;
+  border: 1px solid #f3f4f6;
 }
 
-.store-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+.store-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
 }
 
-.store-item h4 {
-  color: #dc2626;
-  margin: 0 0 0.5rem 0;
-  font-size: 1.2rem;
+.store-image {
+  height: 200px;
+  background: #f9fafb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
 }
 
-.store-item .store-address {
-  color: #6b7280;
-  margin: 0 0 0.5rem 0;
+.store-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.store-card:hover .store-image img {
+  transform: scale(1.05);
+}
+
+.no-image {
+  color: #9ca3af;
   font-size: 0.9rem;
 }
 
-.store-item small {
-  color: #9ca3af;
+.store-card .store-info {
+  padding: 1.5rem;
+}
+
+.store-card .store-info h4 {
+  color: #dc2626;
+  margin-bottom: 0.5rem;
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.store-card .store-address {
+  color: #6b7280;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+.store-card .store-phone {
+  color: #6b7280;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.store-card .store-hours {
+  color: #6b7280;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.store-card .store-rating {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.store-card .rating-stars {
+  color: #f59e0b;
+  font-weight: 600;
+}
+
+.store-card .review-count {
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.store-card .store-specialties {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.store-card .specialty-tag {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 0.25rem 0.5rem;
+  border-radius: 12px;
   font-size: 0.8rem;
+  font-weight: 500;
+  border: 1px solid #fecaca;
+  display: inline-block;
+}
+
+.store-card .specialty-tag.user-tag {
+  background: #dc2626;
+  color: white;
+  border: 1px solid #dc2626;
+  position: relative;
+}
+
+.store-card .specialty-tag.user-tag::after {
+  content: '★';
+  margin-left: 0.25rem;
+  font-size: 0.6rem;
+}
+
+.store-card .store-description {
+  color: #374151;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+  line-height: 1.4;
+}
+
+.view-store-btn {
+  width: 100%;
+  padding: 0.75rem;
+  background: #dc2626;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.view-store-btn:hover {
+  background: #b91c1c;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+}
+
+.no-stores {
+  text-align: center;
+  padding: 3rem;
+  color: #6b7280;
+  background: #f9fafb;
+  border-radius: 16px;
+  margin-top: 2rem;
+}
+
+.no-stores p {
+  margin-bottom: 0.5rem;
+  font-size: 1.1rem;
+}
+
+.no-stores p:last-of-type {
+  color: #9ca3af;
+  font-size: 0.9rem;
 }
 
 
@@ -1103,6 +1555,81 @@ onMounted(async () => {
   background: #9ca3af;
   cursor: not-allowed;
   transform: none;
+}
+
+/* Confirmation Dialog */
+.confirmation-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.confirmation-dialog {
+  background: white;
+  border-radius: 12px;
+  padding: 2rem;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.confirmation-dialog h3 {
+  margin: 0 0 1rem 0;
+  color: #dc2626;
+  font-size: 1.5rem;
+}
+
+.confirmation-dialog p {
+  margin: 0 0 1.5rem 0;
+  color: #374151;
+  line-height: 1.6;
+}
+
+.confirmation-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+}
+
+.btn-confirm {
+  background: #dc2626;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-confirm:hover {
+  background: #b91c1c;
+  transform: translateY(-2px);
+}
+
+.btn-cancel {
+  background: #f3f4f6;
+  color: #374151;
+  border: 2px solid #e5e7eb;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-cancel:hover {
+  background: #e5e7eb;
+  border-color: #d1d5db;
 }
 
 /* Desktop-focused design - minimal responsive adjustments */

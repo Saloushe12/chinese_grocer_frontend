@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import apiClient from '@/api/client'
-import type { AddTagRequest, RemoveTagRequest, GetStoresByTagRequest, GetTagsForStoreRequest } from '@/types/api'
+import type { AddTagRequest, RemoveTagRequest, GetStoresByTagRequest, GetTagsForStoreRequest, Store } from '@/types/api'
 
 export const useTaggingStore = defineStore('tagging', () => {
   // State
@@ -138,7 +138,7 @@ export const useTaggingStore = defineStore('tagging', () => {
     }
   }
 
-  const getStoresByTag = async (tag: string): Promise<string[]> => {
+  const getStoresByTag = async (tag: string): Promise<Store[]> => {
     try {
       setLoading(true)
       clearError()
@@ -149,7 +149,7 @@ export const useTaggingStore = defineStore('tagging', () => {
       // Update local state
       tagStores.value[tag] = storeIds
       
-      return storeIds
+      return response
     } catch (err: any) {
       const errorMessage = err.response?.data?.error || 'Failed to get stores by tag'
       setError(errorMessage)
@@ -167,9 +167,9 @@ export const useTaggingStore = defineStore('tagging', () => {
       const response = await apiClient.listTagsForStore({ storeId })
       
       // Update local state
-      storeTags.value[storeId] = response.tags
+      storeTags.value[storeId] = response
       
-      return response.tags
+      return response
     } catch (err: any) {
       const errorMessage = err.response?.data?.error || 'Failed to get tags for store'
       setError(errorMessage)
