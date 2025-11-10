@@ -275,6 +275,12 @@ const clearStoreSelection = () => {
   showStoreSuggestions.value = false
 }
 
+const hideStoreSuggestionsDelayed = () => {
+  setTimeout(() => {
+    showStoreSuggestions.value = false
+  }, 200)
+}
+
 // Lifecycle
 onMounted(async () => {
   await loadAllStores() // Load all stores for autocomplete
@@ -332,7 +338,7 @@ onMounted(async () => {
                   v-model="storeSearchQuery" 
                   @input="searchStores(storeSearchQuery)"
                   @focus="searchStores(storeSearchQuery)"
-                  @blur="setTimeout(() => showStoreSuggestions = false, 200)"
+                  @blur="hideStoreSuggestionsDelayed"
                   class="form-input"
                   placeholder="Type store name to search..."
                   required

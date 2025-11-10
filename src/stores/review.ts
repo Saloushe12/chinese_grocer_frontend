@@ -180,11 +180,12 @@ export const useReviewStore = defineStore('review', () => {
         if (!userReviews.value[review.userId]) {
           userReviews.value[review.userId] = []
         }
-        const userIndex = userReviews.value[review.userId].findIndex(r => r.reviewId === review.reviewId)
+        const userReviewList = userReviews.value[review.userId]!
+        const userIndex = userReviewList.findIndex(r => r.reviewId === review.reviewId)
         if (userIndex > -1) {
-          userReviews.value[review.userId][userIndex] = review
+          userReviewList[userIndex] = review
         } else {
-          userReviews.value[review.userId].push(review)
+          userReviewList.push(review)
         }
         
         // Add to global reviews
@@ -250,11 +251,12 @@ export const useReviewStore = defineStore('review', () => {
         if (!storeReviews.value[review.storeId]) {
           storeReviews.value[review.storeId] = []
         }
-        const storeIndex = storeReviews.value[review.storeId].findIndex(r => r.reviewId === review.reviewId)
+        const storeReviewList = storeReviews.value[review.storeId]!
+        const storeIndex = storeReviewList.findIndex(r => r.reviewId === review.reviewId)
         if (storeIndex > -1) {
-          storeReviews.value[review.storeId][storeIndex] = review
+          storeReviewList[storeIndex] = review
         } else {
-          storeReviews.value[review.storeId].push(review)
+          storeReviewList.push(review)
         }
         
         // Add to global reviews

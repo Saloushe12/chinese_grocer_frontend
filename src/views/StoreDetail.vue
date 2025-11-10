@@ -27,6 +27,9 @@ const rating = ref<Rating | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
 
+// Safe reviews computed property - ensures reviews is always an array
+const safeReviews = computed(() => reviews.value ?? [])
+
 // Map to store usernames for each userId
 const usernames = ref<{ [userId: string]: string }>({})
 
@@ -63,9 +66,12 @@ const currentImageIndex = ref(0)
 // Computed property for main image - always shows the selected thumbnail
 const mainImageUrl = computed(() => {
   if (storeImages.value.length === 0) {
-    return store.value ? getStoreImageByStoreId(store.value.storeId) : CHINESE_GROCERY_STORE_IMAGES[0]
+    if (store.value) {
+      return getStoreImageByStoreId(store.value.storeId)
+    }
+    return CHINESE_GROCERY_STORE_IMAGES[0] ?? ''
   }
-  return storeImages.value[currentImageIndex.value] || storeImages.value[0]
+  return storeImages.value[currentImageIndex.value] || storeImages.value[0] || ''
 })
 
 // Handle image load errors
@@ -147,8 +153,9 @@ const loadReviews = async () => {
   } catch (err) {
     console.error('Failed to load reviews:', err)
     // On error, use cached data from store as fallback, but still show error
-    if (reviewStore.storeReviews[storeId.value]) {
-      reviews.value = reviewStore.storeReviews[storeId.value]
+    const cachedReviews = reviewStore.storeReviews[storeId.value]
+    if (cachedReviews && Array.isArray(cachedReviews)) {
+      reviews.value = cachedReviews
       await loadUsernamesForReviews(reviews.value)
     } else {
       reviews.value = []
@@ -368,6 +375,12 @@ const clearTagInput = () => {
   showTagSuggestions.value = false
 }
 
+const hideTagSuggestionsDelayed = () => {
+  setTimeout(() => {
+    showTagSuggestions.value = false
+  }, 200)
+}
+
 // Watch for storeId changes to reload data
 watch(() => storeId.value, async (newStoreId) => {
   if (newStoreId) {
@@ -381,6 +394,9 @@ watch(() => reviewStore.storeReviews[storeId.value || ''], async (newReviews) =>
     reviews.value = newReviews
     // Reload usernames when reviews change (handles new reviews or updates)
     await loadUsernamesForReviews(newReviews)
+  } else if (!newReviews && storeId.value) {
+    // If reviews are removed, clear local reviews
+    reviews.value = []
   }
 }, { deep: true })
 
@@ -632,7 +648,7 @@ onMounted(async () => {
                 v-model="newTagInput" 
                 @input="searchTags(newTagInput)"
                 @focus="searchTags(newTagInput)"
-                @blur="setTimeout(() => showTagSuggestions = false, 200)"
+                @blur="hideTagSuggestionsDelayed"
                 @keydown="handleTagInputKeydown"
                 class="form-input tag-input"
                 placeholder="Type to search or create tags (press Enter)..."
@@ -699,12 +715,12 @@ onMounted(async () => {
           </div>
         </div>
         
-        <div v-if="reviews.length === 0 && !showReviewForm" class="no-reviews">
+        <div v-if="safeReviews.length === 0 && !showReviewForm" class="no-reviews">
           <p>No reviews yet. Be the first to review this store!</p>
         </div>
 
-        <div v-if="reviews.length > 0" class="reviews-list">
-          <div v-for="review in reviews" :key="review.reviewId" class="review-card">
+        <div v-if="safeReviews.length > 0" class="reviews-list">
+          <div v-for="review in safeReviews" :key="review.reviewId" class="review-card">
             <div class="review-header">
               <div class="reviewer-info">
                 <h4>{{ getUsername(review.userId) }}</h4>

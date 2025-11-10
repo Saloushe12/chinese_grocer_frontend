@@ -10,7 +10,7 @@
  * - Asian grocery products and packaging displays
  * - Market scenes and shopping environments
  */
-export const CHINESE_GROCERY_STORE_IMAGES = [
+export const CHINESE_GROCERY_STORE_IMAGES: readonly string[] = [
   // Store exteriors and storefronts
   'https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800&h=600&fit=crop&q=80',
   'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=800&h=600&fit=crop&q=80',
@@ -44,15 +44,18 @@ export const CHINESE_GROCERY_STORE_IMAGES = [
   'https://images.unsplash.com/photo-1563379091339-03246963d29c?w=800&h=600&fit=crop&q=80',
   'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=800&h=600&fit=crop&q=80',
   'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=800&h=600&fit=crop&q=80',
-]
+] as const
 
 /**
  * Get a random image from the Chinese grocery store image collection
  * @returns A URL to a representative Chinese grocery store image
  */
 export function getRandomStoreImage(): string {
+  if (CHINESE_GROCERY_STORE_IMAGES.length === 0) {
+    return '' // Return empty string if no images available
+  }
   const randomIndex = Math.floor(Math.random() * CHINESE_GROCERY_STORE_IMAGES.length)
-  return CHINESE_GROCERY_STORE_IMAGES[randomIndex] || CHINESE_GROCERY_STORE_IMAGES[0]
+  return CHINESE_GROCERY_STORE_IMAGES[randomIndex] ?? CHINESE_GROCERY_STORE_IMAGES[0] ?? ''
 }
 
 /**
@@ -62,12 +65,15 @@ export function getRandomStoreImage(): string {
  * @returns A URL to a representative Chinese grocery store image
  */
 export function getStoreImageByStoreId(storeId: string): string {
+  if (CHINESE_GROCERY_STORE_IMAGES.length === 0) {
+    return '' // Return empty string if no images available
+  }
   // Use storeId to deterministically select an image
   // This ensures the same store always gets the same image
   const hash = storeId.split('').reduce((acc, char) => {
     return acc + char.charCodeAt(0)
   }, 0)
   const index = hash % CHINESE_GROCERY_STORE_IMAGES.length
-  return CHINESE_GROCERY_STORE_IMAGES[Math.abs(index)] || CHINESE_GROCERY_STORE_IMAGES[0]
+  return CHINESE_GROCERY_STORE_IMAGES[Math.abs(index)] ?? CHINESE_GROCERY_STORE_IMAGES[0] ?? ''
 }
 

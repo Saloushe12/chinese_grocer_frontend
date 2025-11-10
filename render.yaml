@@ -1,0 +1,13 @@
+# Render configuration file
+# This ensures consistent build behavior across deployments
+
+services:
+  - type: web
+    name: chinese-grocer-frontend
+    env: node
+    buildCommand: npm ci && npm run build
+    startCommand: npm run preview
+    envVars:
+      - key: NODE_ENV
+        value: production
+

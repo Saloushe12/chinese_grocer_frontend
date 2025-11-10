@@ -154,6 +154,10 @@ export async function geocodeStores(stores: Array<{ storeId: string; name: strin
   for (let i = 0; i < stores.length; i++) {
     const store = stores[i]
     
+    if (!store || !store.storeId || !store.name || !store.address) {
+      continue // Skip invalid stores
+    }
+    
     // Rate limit: wait 1 second between requests (Nominatim requirement)
     if (i > 0) {
       await new Promise(resolve => setTimeout(resolve, 1100)) // 1.1 seconds to be safe
@@ -162,7 +166,9 @@ export async function geocodeStores(stores: Array<{ storeId: string; name: strin
     const geocodeResult = await geocodeAddress(store.address)
     
     storesWithCoords.push({
-      ...store,
+      storeId: store.storeId,
+      name: store.name,
+      address: store.address,
       coordinates: geocodeResult?.coordinates
     })
   }
