@@ -102,15 +102,28 @@ class ApiClient {
     )
   }
 
+  // Helper method for Sync-backed routes that must go through Requesting.request
+  private async requestViaRequesting<T>(
+    path: string,
+    payload: Record<string, unknown>
+  ): Promise<T> {
+    const response = await this.client.post('/Requesting/request', { path, ...payload })
+    return response.data as T
+  }
+
   // Store API Methods
   async createStore(data: CreateStoreRequest): Promise<CreateStoreResponse> {
-    const response = await this.client.post('/Store/createStore', data)
-    return response.data
+    return await this.requestViaRequesting<CreateStoreResponse>(
+      '/Store/createStore',
+      data as unknown as Record<string, unknown>
+    )
   }
 
   async deleteStore(storeId: string): Promise<{ status: string; storeId: string }> {
-    const response = await this.client.post('/Store/deleteStore', { storeId })
-    return response.data
+    return await this.requestViaRequesting<{ status: string; storeId: string }>(
+      '/Store/deleteStore',
+      { storeId }
+    )
   }
 
   async listStores(): Promise<Store[]> {
@@ -140,105 +153,23 @@ class ApiClient {
 
   // User API Methods
   async registerUser(data: RegisterUserRequest): Promise<UserResponse> {
-    try {
-      const response = await this.client.post('/User/registerUser', data)
-      console.log('📥 REGISTER RAW RESPONSE:', response)
-      console.log('📥 registerUser response.data:', response.data)
-      console.log('📥 registerUser response.status:', response.status)
-      console.log('📥 registerUser response.headers:', response.headers)
-      
-      // Handle case where response.data might be undefined or empty
-      if (!response.data) {
-        console.error('❌ registerUser: response.data is undefined or null', { 
-          status: response.status, 
-          statusText: response.statusText,
-          headers: response.headers 
-        })
-        throw new Error('Invalid response: response data is missing')
-      }
-      
-      // Check for error response
-      if (response.data.error) {
-        throw new Error(response.data.error)
-      }
-      
-      // Validate response structure
-      if (!response.data.userId) {
-        console.error('❌ registerUser: No userId in response', { 
-          data: response.data,
-          keys: Object.keys(response.data || {}),
-          status: response.status 
-        })
-        throw new Error('Invalid response: userId is missing')
-      }
-      
-      return response.data
-    } catch (error: any) {
-      // Enhanced error logging
-      console.error('❌ registerUser error:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        config: {
-          url: error.config?.url,
-          baseURL: error.config?.baseURL,
-          method: error.config?.method
-        }
-      })
-      throw error
-    }
+    const resp = await this.requestViaRequesting<UserResponse>(
+      '/User/registerUser',
+      data as unknown as Record<string, unknown>
+    )
+    if ((resp as any)?.error) throw new Error((resp as any).error)
+    if (!resp?.userId) throw new Error('Invalid response: userId is missing')
+    return resp
   }
 
   async authenticateUser(data: AuthenticateUserRequest): Promise<UserResponse> {
-    try {
-      const response = await this.client.post('/User/authenticateUser', data)
-      console.log('📥 AUTH RAW RESPONSE:', response)
-      console.log('📥 authenticateUser response.data:', response.data)
-      console.log('📥 authenticateUser response.status:', response.status)
-      console.log('📥 authenticateUser response.headers:', response.headers)
-      
-      // Handle case where response.data might be undefined or empty
-      if (!response.data) {
-        console.error('❌ authenticateUser: response.data is undefined or null', { 
-          status: response.status, 
-          statusText: response.statusText,
-          headers: response.headers 
-        })
-        throw new Error('Invalid response: response data is missing')
-      }
-      
-      // Check for error response
-      if (response.data.error) {
-        throw new Error(response.data.error)
-      }
-      
-      // Validate response structure
-      if (!response.data.userId) {
-        console.error('❌ authenticateUser: No userId in response', { 
-          data: response.data,
-          keys: Object.keys(response.data || {}),
-          status: response.status 
-        })
-        throw new Error('Invalid response: userId is missing')
-      }
-      
-      return response.data
-    } catch (error: any) {
-      // Enhanced error logging
-      console.error('❌ authenticateUser error:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        config: {
-          url: error.config?.url,
-          baseURL: error.config?.baseURL,
-          method: error.config?.method
-        }
-      })
-      throw error
-    }
+    const resp = await this.requestViaRequesting<UserResponse>(
+      '/User/authenticateUser',
+      data as unknown as Record<string, unknown>
+    )
+    if ((resp as any)?.error) throw new Error((resp as any).error)
+    if (!resp?.userId) throw new Error('Invalid response: userId is missing')
+    return resp
   }
 
   async getUserById(userId: string): Promise<User | null> {
@@ -255,23 +186,37 @@ class ApiClient {
   }
 
   async updateUserEmail(data: UpdateUserEmailRequest): Promise<void> {
-    await this.client.post('/User/updateUserEmail', data)
+    await this.requestViaRequesting<{}>(
+      '/User/updateUserEmail',
+      data as unknown as Record<string, unknown>
+    )
   }
 
   async deleteUser(userId: string): Promise<{ status: string; userId: string }> {
-    const response = await this.client.post('/User/deleteUser', { userId })
-    return response.data
+    return await this.requestViaRequesting<{ status: string; userId: string }>(
+      '/User/deleteUser',
+      { userId }
+    )
   }
 
   // Review API Methods
   async createReview(data: CreateReviewRequest): Promise<CreateReviewResponse> {
-    const response = await this.client.post('/Review/createReview', data)
-    return response.data
+    // Sync responds with { reviewId } or { error }
+    const resp = await this.requestViaRequesting<CreateReviewResponse>(
+      '/Review/createReview',
+      data as unknown as Record<string, unknown>
+    )
+    if ((resp as any)?.error) throw new Error((resp as any).error)
+    if (!resp?.reviewId) throw new Error('Invalid response: reviewId is missing')
+    return resp
   }
 
   async deleteReview(reviewId: string): Promise<{ status: string; reviewId: string }> {
-    const response = await this.client.post('/Review/deleteReview', { reviewId })
-    return response.data
+    // Uses Sync-backed flow to (1) adjust Rating, then (2) delete Review, then respond
+    return await this.requestViaRequesting<{ status: string; reviewId: string }>(
+      '/Review/deleteReview',
+      { reviewId }
+    )
   }
 
   async getReviewsForStore(data: GetReviewsForStoreRequest): Promise<string[]> {
@@ -318,20 +263,21 @@ class ApiClient {
 
   // Tagging API Methods
   async addTag(data: AddTagRequest): Promise<void> {
-    await this.client.post('/Tagging/addTag', data)
+    await this.requestViaRequesting<{}>('/Tagging/addTag', data as any)
   }
 
   async removeTag(data: RemoveTagRequest): Promise<void> {
-    await this.client.post('/Tagging/removeTag', data)
+    await this.requestViaRequesting<{}>('/Tagging/removeTag', data as any)
   }
 
   async getStoresByTag(data: GetStoresByTagRequest): Promise<Store[]> {
-    const response = await this.client.post('/Tagging/getStoresByTag', data)
-    // Backend returns { results: Store[], error?: string }
-    if (response.data.error) {
-      throw new Error(response.data.error)
-    }
-    return Array.isArray(response.data.results) ? response.data.results : []
+    // This route is implemented by a Sync (not a concept action), so call via Requesting
+    const resp = await this.requestViaRequesting<{ results?: Store[]; error?: string }>(
+      '/Tagging/getStoresByTag',
+      data as unknown as Record<string, unknown>
+    )
+    if (resp.error) throw new Error(resp.error)
+    return Array.isArray(resp.results) ? resp.results : []
   }
 
   async listTagsForStore(data: GetTagsForStoreRequest): Promise<string[]> {
